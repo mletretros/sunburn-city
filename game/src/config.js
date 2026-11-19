@@ -1,61 +1,56 @@
-// Every tuning number and colour in one place. The playfield is a fixed 1280x720 logical area;
-// the renderer scales it to the window, so no rule below depends on the screen size.
-
-export const FIELD = { width: 1280, height: 720, groundY: 664 };
-
-/** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
-export const STEP = 1 / 60;
-
-export const PLAYER = {
-  width: 72,
-  height: 24,
-  speed: 560,
-  invulnerable: 1.5,
+export const WORLD = {
+  seed: 'palma-97', columns: 7, rows: 9, cell: 58, road: 15, sidewalk: 3.4,
+  north: -406, shore: -43, boardwalk: -16, southMargin: 24, oceanSize: 2800,
+  spawn: { x: -9.1, z: 64, heading: 0.11 },
+  park: { col: 1, row: 7 },
 };
 
-export const LIVES = 3;
-
-export const BLOCK = {
-  minWidth: 40,
-  maxWidth: 110,
-  height: 36,
-  speed: 240,
-  speedPerLevel: 30,
-  speedJitter: 90,
-  interval: 0.55,
-  intervalScale: 0.88,
-  minInterval: 0.14,
-  dodgePoints: 1,
+export const DISTRICTS = {
+  palma: { name: 'Palma Strip', tint: '#f4a680', zone: '01', height: [7, 16], colors: [0xff987f, 0xffcb96, 0x87d7cc, 0xffe2b3, 0xe8a5be] },
+  neon: { name: 'Neon Row', tint: '#b6a1e5', zone: '02', height: [20, 72], colors: [0x7eabc5, 0xdca9a3, 0x97a6c5, 0x85bdba, 0xdbb9a1] },
+  dock: { name: 'Dockside', tint: '#d3a469', zone: '03', height: [7, 16], colors: [0xaab1a4, 0xc88a6b, 0xb9ac98, 0xa7c5cc] },
+  coral: { name: 'Coral Heights', tint: '#87c8a1', zone: '04', height: [4, 9], colors: [0xe2b99b, 0xcbcf9c, 0xffc0a6, 0xc3c9e2, 0xd0e0cc] },
+  causeway: { name: 'The Causeway', tint: '#93b8d0', zone: '05', height: [6, 15], colors: [0xaeb8c2, 0xffce9e, 0xadc6b7, 0xeeac9e] },
 };
-
-export const COIN = {
-  size: 24,
-  speed: 190,
-  speedPerLevel: 14,
-  interval: 1.4,
-  intervalJitter: 0.8,
-  points: 10,
-};
-
-/** Seconds of play per level, and the last level: speeds and spawn rates stop growing there. */
-export const LEVEL = { seconds: 12, max: 12 };
-
-/** How many falling things can exist at once; the pool is allocated once, at boot. */
-export const POOL_SIZE = 64;
 
 export const PALETTE = {
-  backdrop: '#11141b',
-  sky: '#1b1f2a',
-  ground: '#2a3040',
-  player: '#4fc3f7',
-  block: '#e5534b',
-  coin: '#f2c94c',
-  panel: '#252b38',
-  text: '#eef1f5',
-  muted: '#8b93a3',
+  skyTop: 0x51a6cf, skyHorizon: 0xfbd5a9, skyDusk: 0xa65f9b,
+  sun: 0xffd1a0, duskSun: 0xff905b, fill: 0xfff2df, bounce: 0xb8abc1,
+  asphalt: 0x555565, roadEdge: 0xece0c6, lane: 0xe9b752, pavement: 0xe6bdab,
+  concrete: 0xc4a798, curb: 0xffe0c8, sand: 0xf5ca91, park: 0x82a36e,
+  iron: 0x36434c, glass: 0x25434d, teal: 0x34baa9, coral: 0xf35c68, cream: 0xffeac8,
+  foliage: [0x467963, 0x539c71, 0x77aa68, 0x307a68, 0x8db76e],
 };
 
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+export const PLAYER = {
+  walk: 4.8, sprint: 8.5, jump: 5.7, gravity: 18, radius: .38, step: .29,
+  response: 16, airResponse: 4.5, turn: 14, health: 100, armour: 0, cash: 240,
+  colors: { skin: 0xb87050, hair: 0x2f2028, jacket: 0xeb6960, trim: 0xffd38e,
+    shirt: 0xf8ddbb, pants: 0x263f54, shoes: 0xeedbc0, bag: 0x205e60, stripe: 0x73e4be },
+};
 
-/** Where the best score is kept between visits (this browser only). */
-export const BEST_KEY = 'block-dodger.best';
+export const CAMERA = {
+  foot: { distance: 5.1, target: 1.48, shoulder: .7, fov: 63 },
+  driving: { distance: 9.2, target: 1.95, shoulder: 0, fov: 66 },
+  sensitivity: .0023, pitch: .2, pitchMin: -.32, pitchMax: 1.12,
+  follow: 13, recovery: 7, radius: .25, clearance: .15, far: 1220,
+};
+
+export const QUALITY = {
+  low: { ratio: .65, shadow: 0 }, standard: { ratio: 1.15, shadow: 1024 }, high: { ratio: 1.55, shadow: 2048 },
+};
+export const LIGHT = { sunX: -93, sunY: 62, sunZ: 51, shadowRadius: 74, resnap: 12, fogNear: 95, fogFar: 610 };
+export const STEP = 1 / 60;
+
+export const DRIVE = {
+  acceleration: 10.8, brake: 23, reverse: 7.5, drag: .46, friction: 1.45,
+  steer: .59, grip: 12, driftGrip: 2.2, handbrake: 5.5, exitSpeed: 3.2,
+  reach: 2.05, kerb: .27, impact: 2.8, lookAhead: 3.3, speedFov: 8,
+  starter: { x: -6.38, z: 58.9, heading: 0 },
+};
+
+export const STREET_LIFE = {
+  cars: 22, walkers: 30, driverPool: 4, near: 48, far: 230, visibleRange: 178,
+  stop: 11.4, green: 8, allRed: 1, streetSpeed: [9, 14], sidewalkInset: 1.75,
+  pedestrianSpeed: [1.14, 1.83], fearRange: 10, carThreatSpeed: 8, earshot: 27,
+};

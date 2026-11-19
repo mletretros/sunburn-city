@@ -1,19 +1,120 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
-<style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#192633">
+  <title>Sunburn City</title>
+  <link rel="icon" href="data:,">
+  <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
+  <style>
+    :root{color-scheme:dark;--cream:#fff1d8;--peach:#ffae89;--hot:#ff746b;--mint:#8be3c8;--muted:#c3c8ca;--line:#fbe2bc42;--ink:#17232d;--mono:ui-monospace,Consolas,monospace}
+    *{box-sizing:border-box} [hidden]{display:none!important} html,body{height:100%;margin:0;overflow:hidden}
+    body{background:#293e4d;color:var(--cream);font-family:Arial,sans-serif}
+    #view{width:100%;height:100%;display:block;outline:none}
+    #hud,#menus{position:absolute;inset:0} #hud{pointer-events:none;text-shadow:0 1px 3px #10181f}
+    .micro{font:800 12px/1.1 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+    #objective-panel,.vitals,#equipment,#location,#driving,#interact,#toast{background:#14232eea;border:1px solid var(--line);box-shadow:0 4px 20px #1d22243b}
+    #objective-panel{position:absolute;top:clamp(13px,2.7vh,28px);left:clamp(14px,2.5vw,34px);min-width:200px;padding:11px 16px 12px;border-left:3px solid var(--peach)}
+    #objective-panel .micro{color:var(--peach);display:flex;align-items:center;gap:8px}
+    #objective-panel .micro::before{content:'';width:7px;height:7px;background:var(--peach);transform:rotate(45deg)}
+    #objective{display:block;font-size:clamp(17px,1.7vw,24px);margin-top:5px}
+    .vitals{position:absolute;right:clamp(14px,2.5vw,34px);top:clamp(13px,2.7vh,28px);min-width:176px;padding:10px 13px;border-top:2px solid var(--peach)}
+    .vitals-top{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:6px}
+    .vitals-top .micro{color:var(--peach)} #cash{font:900 clamp(20px,2vw,30px)/1 Arial,sans-serif;color:var(--mint)}
+    .meter{display:grid;grid-template-columns:33px 1fr;align-items:center;gap:8px;font:700 11px var(--mono);color:var(--cream);margin-top:4px}
+    .track{display:block;height:5px;background:#a5b0c638;margin:0}.track i{height:100%;display:block;background:var(--hot)} #armour{background:#84dcdc}
+    #stars{letter-spacing:.23em;font-size:16px;line-height:1.1;color:#ffcfabac;margin-top:5px;text-align:right} #wanted-state{font:900 10px var(--mono);color:#ff8a88;letter-spacing:.16em;display:block;text-align:right}
+    #damage{position:absolute;inset:0;opacity:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 47%,#df394754)}
+    #damage::after{content:'';position:absolute;left:calc(50% - 52px);top:calc(50% - 52px);width:104px;height:104px;border:4px solid transparent;border-top-color:#ff625d;border-radius:50%;transform:rotate(var(--bearing,0rad))}
+    #reticle{position:absolute;top:50%;left:50%;width:18px;height:18px;transform:translate(-50%,-50%);border:2px solid #fff1d9;border-radius:100%;box-shadow:0 0 0 1px #26323a, inset 0 0 0 1px #26323a}
+    #equipment{position:absolute;right:clamp(14px,2.5vw,34px);bottom:clamp(28px,5vh,45px);padding:9px 12px;min-width:116px;text-align:right}
+    #equipment b{font-size:15px} #equipment small{color:var(--muted);margin-left:7px}
+    #navigation{position:absolute;left:clamp(14px,2.5vw,34px);bottom:clamp(17px,3.2vh,32px);display:flex;align-items:flex-end;gap:9px}
+    #minimap{width:clamp(110px,17vh,176px);height:auto;border-radius:50%;border:2px solid #ffe0bdab;background:#1c3542;box-shadow:0 0 0 4px #14232ee0,0 5px 18px #1528316b}
+    #minimap.expanded{width:clamp(175px,36vh,315px)}
+    #location{padding:8px 12px 8px 10px;border-left:2px solid var(--district,var(--peach));margin-bottom:5px}
+    #district{font:900 clamp(16px,1.7vw,23px)/1.1 Arial,sans-serif;display:block;color:var(--district,var(--cream));margin-top:3px}
+    #zone{font-size:10px;color:var(--muted)}
+    #lock-hint{position:absolute;right:clamp(14px,2.5vw,34px);bottom:11px;color:var(--cream);text-shadow:0 1px 5px #10181f,0 1px 4px #10181f;font-size:10px}
+    #toast,#interact{position:absolute;left:50%;transform:translateX(-50%);padding:9px 15px;bottom:18%;font-weight:800;border-left:3px solid var(--mint)}
+    #toast{top:8%;bottom:auto} #driving{position:absolute;right:30px;bottom:105px;padding:9px 16px} #speed{font-size:28px}
+    #driving{min-width:170px;padding:10px 12px;border-top:2px solid var(--mint)} #driving .micro{color:var(--mint)}
+    .dashboard{display:flex;align-items:baseline;gap:5px;margin:4px 0 5px} #speed{font:900 35px/.95 var(--mono);letter-spacing:-.09em}
+    #gear{margin-left:auto;padding:4px 6px;background:#8be3c8;color:#13272a;text-shadow:none;font:900 14px var(--mono);min-width:23px;text-align:center}
+    .condition{display:flex;justify-content:space-between;gap:16px;font:10px var(--mono);color:var(--muted);margin-bottom:3px} #car-health{background:var(--mint)}
+    #menus{overflow:auto;background:linear-gradient(90deg,#101b2a 0%,#101d2bed 22%,#152334a8 43%,#15233427 66%,transparent 100%),linear-gradient(0deg,#121b2638,transparent 56%);display:flex;align-items:center}
+    #menus[data-mode=pause]{background:linear-gradient(100deg,#101d2bf2 8%,#182a3b9e 60%,#182a3b45)}
+    .sheet{margin:auto 0 auto clamp(26px,5.3vw,90px);width:min(510px,90vw);padding:24px 0}
+    .issue{display:flex;align-items:center;gap:10px;color:var(--peach)} .issue::before{content:'';width:26px;height:2px;background:currentColor}
+    .logo{font-family:Impact,'Arial Black',system-ui,sans-serif;font-style:italic;font-weight:1000;font-size:clamp(52px,8vw,127px);line-height:.81;letter-spacing:-.075em;text-transform:uppercase;margin:13px 0 16px;filter:drop-shadow(3px 5px 0 #142435)}
+    .logo span{display:block}.logo span:last-child{color:var(--peach);letter-spacing:-.055em}
+    .chapter{font-size:12px;color:var(--mint);margin:0 0 7px}
+    .premise{font-size:clamp(13px,1.38vw,17px);line-height:1.42;color:#f7e4d2;margin:0 0 14px;max-width:420px}
+    .buttons{display:flex;flex-wrap:wrap;gap:7px}
+    button,select{font:800 12px var(--mono);letter-spacing:.055em;text-transform:uppercase;color:var(--cream);background:#172631;border:1px solid #ead8bf75;padding:9px 13px;border-radius:0;cursor:pointer}
+    button.primary{background:var(--peach);border-color:var(--peach);color:#1c2730} button:not(:disabled):hover,select:hover{border-color:var(--mint);color:var(--mint)} button.primary:hover{background:var(--mint);color:#15232e}
+    button:disabled{opacity:.47;cursor:default} :focus-visible{outline:2px solid var(--mint);outline-offset:3px}
+    #slot{min-height:14px;margin:6px 0 8px;color:#f1cbb5;font:11px/1.3 var(--mono)}
+    .keys{font:12px/1.8 var(--mono);display:flex;flex-wrap:wrap;gap:1px 12px;margin:0;padding:0;list-style:none;color:var(--cream)}
+    kbd{font:800 11px var(--mono);background:#263845;border:1px solid #e5d2b75c;padding:1px 4px;color:var(--mint)}
+    #settings{display:flex;align-items:center;flex-wrap:wrap;gap:9px 14px;margin-top:10px;border-top:1px solid var(--line);padding-top:9px;width:max-content;max-width:100%;font:11px var(--mono);color:var(--muted)}
+    #settings label{display:flex;align-items:center;gap:6px} #settings select{padding:4px 5px;font-size:11px} #sensitivity{width:81px;accent-color:var(--peach)}
+    #menu-status{min-height:13px;margin:5px 0 0;color:var(--mint);font:11px var(--mono)}
+    #pause h2{font-size:clamp(43px,7vw,87px);font-weight:950;font-style:italic;letter-spacing:-.075em;margin:7px 0 16px}
+    #pause .buttons{margin-bottom:13px}
+    .postcard{pointer-events:none;position:absolute;right:clamp(14px,3.1vw,55px);bottom:clamp(16px,3.5vh,40px);text-align:right;text-shadow:0 2px 6px #0f1826}
+    .postcard b{display:block;font-size:clamp(16px,2.5vw,35px);letter-spacing:-.045em;margin-bottom:4px}.postcard .micro{color:#ffe5c6}
+    #menus[data-mode=pause] .postcard{display:none}
+    @media(max-height:530px){.sheet{padding:12px 0}.logo{font-size:clamp(51px,7.5vw,85px);margin:9px 0 12px}.premise{margin-bottom:9px}#settings{margin-top:6px;padding-top:5px}}
+    #objective-panel{width:min(440px,calc(100vw - 232px));min-width:0}#objective{font-size:17px;line-height:1.25}#mission-label{font-size:10px;letter-spacing:.08em}#objective-sub{display:block;color:var(--mint);font:11px/1.4 var(--mono);margin-top:7px}#reputation{display:block;text-align:right;font:11px var(--mono);color:var(--peach);margin-top:5px}
+    #dialogue-root{position:absolute;z-index:10;left:50%;bottom:20px;transform:translateX(-50%);width:min(650px,94vw);display:flex;gap:16px;padding:17px;background:#12232bf5;border:1px solid var(--line);border-top:3px solid var(--peach);box-shadow:0 8px 35px #07182066}#dialogue-portrait{width:84px;height:98px;flex-shrink:0;image-rendering:pixelated}.dialogue-copy{flex:1;min-width:0}#dialogue-label{color:var(--mint);font-size:10px;line-height:1.4}#dialogue-name{display:block;color:var(--peach);font-size:20px;margin-top:5px}#dialogue-text{font-size:15px;line-height:1.4;min-height:64px;margin:6px 0 12px}#dialogue-root button{font-size:10px;padding:7px 10px}
+    #mission-complete{position:absolute;top:29%;left:50%;transform:translateX(-50%);text-align:center;background:#132c32f0;border:1px solid var(--mint);padding:14px 23px;max-width:90vw}#mission-complete .micro{color:var(--mint)}#mission-complete strong{display:block;font-size:22px;margin:6px 0}#mission-complete span{font:12px var(--mono);color:var(--peach)}#toast{top:145px;max-width:70vw;font-size:12px;text-align:center}
+    #pause{width:min(650px,90vw)}#mission-log{max-height:205px;overflow:auto;padding:10px 13px;background:#10212bec;border:1px solid var(--line);margin-bottom:10px}#story-progress{font:11px var(--mono);color:var(--mint);margin:0 0 10px}#job-list{padding-left:17px;list-style:none;margin:0}#job-list li{margin-bottom:10px}#job-list strong{font:12px var(--mono);color:var(--peach)}#job-list small{display:block;font-size:12px;line-height:1.4;color:var(--muted);margin-top:4px}#job-start{margin-top:3px}#pause:has(#mission-log:not([hidden])) h2{font-size:38px;margin-bottom:10px}
+  </style>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
-<script type="module" src="./src/main.js"></script>
+  <canvas id="view" tabindex="-1" aria-label="Sunburn City 3D view"></canvas>
+  <section id="hud" aria-label="Game HUD" hidden>
+    <div id="objective-panel"><div class="micro" id="mission-label">Free roam</div><strong id="objective">Explore Palma Strip</strong><small id="objective-sub"></small></div>
+    <div id="damage"></div><div id="reticle" hidden></div><div class="vitals">
+      <div class="vitals-top"><span class="micro">M. Vega</span><strong id="cash">$240</strong></div>
+      <span id="reputation">0 REP</span>
+      <div class="meter">HP<span class="track" role="progressbar" aria-label="Health"><i id="health"></i></span></div>
+      <div class="meter">ARM<span class="track" role="progressbar" aria-label="Armour"><i id="armour"></i></span></div>
+      <span id="wanted-state" hidden></span><div id="stars" aria-label="Wanted level 0 of 5"><span>☆</span><span>☆</span><span>☆</span><span>☆</span><span>☆</span></div>
+    </div>
+    <div id="navigation"><canvas id="minimap" width="256" height="256" aria-label="North-up street map"></canvas><div id="location"><span class="micro" id="zone"></span><strong id="district"></strong></div></div>
+    <div id="equipment"><b id="weapon">Unarmed</b><small class="micro" id="ammo">—</small></div>
+    <div id="driving" hidden><strong class="micro" id="car-name">Vehicle</strong>
+      <div class="dashboard"><strong id="speed">00</strong> <span class="micro">km/h</span><span id="gear" aria-label="Gear">N</span></div>
+      <div class="condition"><span>BODY</span><span id="car-condition">100%</span></div>
+      <span class="track" role="progressbar" aria-label="Vehicle health"><i id="car-health"></i></span></div>
+    <div id="interact" hidden>Press E to enter</div><div id="toast" role="status" hidden></div><div id="lock-hint" class="micro"></div>
+    <div id="mission-complete" role="status" hidden><div class="micro">Job complete</div><strong></strong><span></span></div>
+  </section>
+  <section id="menus" data-mode="start" aria-label="Game menus">
+    <div id="start" class="sheet">
+      <div class="issue micro">The coast is never clear</div>
+      <h1 class="logo"><span>Sunburn</span><span>City</span></h1>
+      <div class="chapter micro">Palma Strip / 01</div>
+      <p class="premise">Bike courier Marisol “Mars” Vega knows every shortcut in Sunburn City. Fixer Duke Salazar needs that edge for a job on the waterfront. The Chrome Serpents already have a claim on the docks, and for once Mars can't just ride away.</p>
+      <div class="buttons"><button id="new" class="primary">New Game&nbsp; ↗</button><button id="continue" disabled>Continue</button></div>
+      <p id="slot">No local save</p><div data-controls></div>
+    </div>
+    <div id="pause" class="sheet" hidden>
+      <div class="issue micro">Sunburn City / off the clock</div><h2>PAUSED</h2>
+      <div class="buttons"><button id="resume" class="primary">Resume</button><button id="jobs">Jobs</button><button id="save">Save</button><button id="load" disabled>Load</button><button id="restart">Restart</button></div>
+      <section id="mission-log" hidden><p id="story-progress"></p><ol id="job-list"></ol><button id="job-start">Take next job</button></section>
+      <div data-controls></div>
+    </div>
+    <div id="settings"><label>Quality <select id="quality"><option value="low">Low</option><option value="standard">Standard</option><option value="high">High</option></select></label>
+      <label for="sensitivity">Mouse <input type="range" id="sensitivity" min="0.3" max="2.5" value="1" step="0.1"><output id="sensitivity-value">1.0×</output></label>
+      <label><input type="checkbox" id="audio-mute"> Mute</label></div>
+    <p id="menu-status" role="status"></p>
+    <div class="postcard"><b>PALMA STRIP</b><span class="micro">Waterfront / late afternoon</span></div>
+  </section>
+  <template id="controls-template"><ul class="keys" aria-label="Controls"><li><kbd>WASD</kbd> Move / drive</li><li><kbd>SHIFT</kbd> Sprint</li><li><kbd>SPACE</kbd> Jump / handbrake</li><li><kbd>E</kbd> Enter / exit</li><li><kbd>H</kbd> Horn</li><li><kbd>MOUSE</kbd> Look / aim / fire</li><li><kbd>R</kbd> Reload</li><li><kbd>M</kbd> Map</li><li><kbd>P</kbd> Pause</li><li><kbd>ESC</kbd> Release</li></ul></template>
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>

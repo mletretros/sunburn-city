@@ -1,28 +1,33 @@
-// Each subsystem owns a stream, so adding scenery never changes traffic.
+// A string mixer feeds xorshift32; each subsystem owns its own stream.
 export function hashSeed(seed) {
-  let result = 2166136261;
-  for (const letter of String(seed)) result = Math.imul(result ^ letter.codePointAt(0), 16777619);
-  return result >>> 0;
+  const label = String(seed);
+  let word = 0x9e3779b9;
+  for (let at = 0; at < label.length; at++) {
+    word = Math.imul(word + label.charCodeAt(at), 0x85ebca6b);
+    word = (word << 13) | (word >>> 19);
+  }
+  return (word ^ (word >>> 16)) >>> 0;
 }
 export function makeRng(seed) {
-  let state = hashSeed(seed);
-  function next() {
-    state = state + 0x6d2b79f5 | 0;
-    let bits = Math.imul(state ^ state >>> 15, state | 1);
-    bits ^= bits + Math.imul(bits ^ bits >>> 7, bits | 61);
-    return ((bits ^ bits >>> 14) >>> 0) / 4294967296;
-  }
-  const range = (min, max) => min + (max - min) * next();
-  const int = (min, max) => Math.floor(range(min, max + 1));
-  return {
-    next, range, int,
-    pick: values => values[int(0, values.length - 1)],
-    shuffle(values) {
-      const copy = values.slice();
-      for (let i = copy.length - 1; i > 0; --i) {
-        const j = int(0, i), saved = copy[i]; copy[i] = copy[j]; copy[j] = saved;
+  let word = hashSeed(seed) || 0x12345678;
+  const stream = {
+    next() {
+      word ^= word << 13;
+      word ^= word >>> 17;
+      word ^= word << 5;
+      return (word >>> 0) * 2.3283064365386963e-10;
+    },
+    range(a, b) { return a + (b - a) * stream.next(); },
+    int(a, b) { return a + Math.floor(stream.next() * (b - a + 1)); },
+    pick(items) { return items[Math.floor(stream.next() * items.length)]; },
+    shuffle(items) {
+      const deck = items.slice();
+      for (let n = deck.length; n > 1; n--) {
+        const chosen = stream.int(0, n - 1), hold = deck[n - 1];
+        deck[n - 1] = deck[chosen]; deck[chosen] = hold;
       }
-      return copy;
+      return deck;
     },
   };
+  return stream;
 }

@@ -1,35 +1,18 @@
-import { MISSIONS } from '../systems/story.js';
 import { slotSummary } from '../systems/save.js';
-const byId = id => document.getElementById(id);
+import { MISSIONS } from '../systems/story.js';
 export function createMenus(actions, initialQuality) {
-  const root = byId('menus'), start = byId('start'), pause = byId('pause'), settings = byId('settings'), status = byId('menu-status');
-  const journal = byId('mission-log'), list = byId('job-list'), next = byId('job-start'), progress = byId('story-progress'), saveInfo = byId('slot');
-  const quality = byId('quality'), sensitivity = byId('sensitivity');
-  for (const [id, command] of [['new', 'newGame'], ['continue', 'load'], ['resume', 'resume'], ['save', 'save'], ['load', 'load'], ['restart', 'restart'], ['job-start', 'startMission']]) byId(id).addEventListener('click', () => actions[command]());
-  for (const target of document.querySelectorAll('[data-controls]')) target.append(byId('controls-template').content.cloneNode(true));
-  byId('jobs').addEventListener('click', () => { journal.hidden = !journal.hidden; actions.jobs(); });
-  quality.value = initialQuality; quality.addEventListener('change', () => actions.quality(quality.value));
-  byId('audio-mute').addEventListener('change', event => actions.mute(event.currentTarget.checked));
-  sensitivity.addEventListener('input', () => { const value = Number(sensitivity.value); byId('sensitivity-value').value = `${value.toFixed(1)}×`; actions.sensitivity(value); });
-  function slot(saved) { saveInfo.textContent = slotSummary(saved); byId('continue').disabled = byId('load').disabled = !saved; }
-  return {
-    slot,
-    show(mode, saved) {
-      root.dataset.mode = mode; root.hidden = mode === 'play'; start.hidden = mode !== 'start'; pause.hidden = mode !== 'pause'; if (root.hidden) return;
-      if (mode === 'start') journal.hidden = true;
-      (mode === 'start' ? start : pause).append(settings, status); status.replaceChildren(); slot(saved);
-    },
-    missionLog({ index, state }, { reputation }) {
-      progress.textContent = `${index} / ${MISSIONS.length} jobs complete · ${Math.round(100 * index / MISSIONS.length)}% · ${reputation} REP`;
-      list.replaceChildren(...MISSIONS.map((job, number) => {
-        const row = document.createElement('li'), heading = document.createElement('strong'), details = document.createElement('small');
-        const label = number < index ? 'COMPLETE' : number > index ? 'LOCKED' : state.toUpperCase(), before = MISSIONS[number - 1];
-        heading.textContent = `${number + 1}. ${job.name} · ${label}`;
-        details.textContent = `${job.brief}  $${job.rewards.cash} / +${job.rewards.reputation} REP · ${before ? `Unlock: ${before.name}, ${job.unlock.reputation} REP` : 'Available from the start'}`;
-        row.append(heading, details); return row;
-      }));
-      next.disabled = index >= MISSIONS.length; next.textContent = state === 'active' ? 'Resume job' : state === 'failed' ? 'Retry job' : 'Take next job';
-    },
-    message(text) { status.textContent = text; },
+  const root = document.createElement('section'); root.id = 'menu-root';
+  root.innerHTML = '<div id="menu-content"><div class="micro">SUNBURN COUNTY / FLORIDA / 1997</div><h1>SUNBURN<br><em>CITY.</em></h1><p id="menu-description">Every street has a price.<br>Mars Vega is about to change the rate.</p><div class="menu-buttons"><button id="new-game" class="primary">New Game ↗</button><button id="continue-game">Continue</button><button id="resume-game">Resume</button><button id="save-game">Save game</button><button id="jobs-game">Jobs / retry</button></div><div id="save-summary"></div><div id="menu-message"></div><div id="jobs-list" hidden></div><div class="settings"><label>QUALITY <select id="quality"><option>low</option><option>standard</option><option>high</option></select></label><label>LOOK <input id="sensitivity" type="range" min="1" max="6" value="2.5" step=".5"></label><label><input id="mute" type="checkbox"> MUTE</label></div><footer>WASD MOVE / E ENTER / SPACE DRIFT / M MAP<br><br>ONE CITY. EIGHT DELIVERIES. NO CLEAN GETAWAYS.</footer></div>';
+  document.body.append(root);
+  const el = id => root.querySelector('#' + id);
+  el('new-game').onclick = () => actions.newGame(); el('continue-game').onclick = () => actions.load(); el('resume-game').onclick = () => actions.resume();
+  el('save-game').onclick = () => actions.save(); el('jobs-game').onclick = () => { actions.jobs(); actions.startMission(); };
+  el('quality').value = initialQuality; el('quality').onchange = e => actions.quality(e.target.value);
+  el('sensitivity').oninput = e => actions.sensitivity(Number(e.target.value) / 1000); el('mute').onchange = e => actions.mute(e.target.checked);
+  function slot(saved) { el('save-summary').textContent = slotSummary(saved); el('continue-game').disabled = !saved; }
+  return { slot,
+    show(mode, saved) { root.hidden = mode === 'play'; el('resume-game').hidden = mode === 'start'; el('save-game').hidden = mode === 'start'; el('jobs-game').hidden = mode === 'start'; slot(saved); },
+    message(value) { el('menu-message').textContent = value; },
+    missionLog(missions, player) { const list = el('jobs-list'); list.replaceChildren(); for (let n = 0; n < MISSIONS.length; n++) { const row = document.createElement('div'); row.textContent = (n < missions.index ? '✓ ' : n === missions.index ? '→ ' : '· ') + (n + 1) + '. ' + MISSIONS[n].name; list.append(row); } list.hidden = false; },
   };
 }

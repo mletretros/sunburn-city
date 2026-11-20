@@ -1,6 +1,10 @@
-[
-  { "scenario": "cover", "name": "1-cover.jpg", "query": "?shot=cover&seed=97", "description": "Gold Sirocco delivery through Neon Row, street life, one wanted star and active navigation." },
-  { "scenario": "foot", "name": "2-foot.jpg", "query": "?shot=foot&seed=97", "description": "Mars on Palma Strip near pedestrians, shops and a parked car entry prompt." },
-  { "scenario": "chase", "name": "3-chase.jpg", "query": "?shot=chase&seed=97", "description": "Four-star cruiser pursuit with a handbrake drift, smoke and police blips." },
-  { "scenario": "brief", "name": "4-brief.jpg", "query": "?shot=brief&seed=97", "description": "Duke calls about the envelope while its objective and world marker remain visible." }
-]
+{
+  "seed": 1997,
+  "viewport": { "width": 1280, "height": 720, "deviceScaleFactor": 1 },
+  "scenarios": [
+    { "name": "cover", "url": "?shot=cover&seed=1997", "file": "1-cover.jpg", "description": "Stolen gold Sirocco, Neon Row, delivery and one-star heat" },
+    { "name": "foot", "url": "?shot=foot&seed=1997", "file": "2-foot.jpg", "description": "Mars on Palma among walkers and storefronts, nearby vehicle entry" },
+    { "name": "chase", "url": "?shot=chase&seed=1997", "file": "3-chase.jpg", "description": "Four-star Civic Guard pursuit, multiple cruisers and drift smoke" },
+    { "name": "brief", "url": "?shot=brief&seed=1997", "file": "4-brief.jpg", "description": "Duke’s radio over the live world and envelope objective" }
+  ]
+}

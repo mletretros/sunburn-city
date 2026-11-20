@@ -1,36 +1,36 @@
 import { cpSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import * as paths from 'node:path';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-// Canonicalise absent destinations too, preventing a symlinked ancestor from hiding overlap.
-function canonical(path: string): string {
-  return existsSync(path) ? realpathSync(path) : join(canonical(dirname(path)), basename(path));
+// Resolve an as-yet uncreated output path without trusting symlink parents.
+function locate(candidate: string): string {
+  if (existsSync(candidate)) return realpathSync(candidate);
+  const parent = locate(paths.dirname(candidate));
+  return paths.join(parent, paths.basename(candidate));
 }
-function contains(parent: string, child: string): boolean {
-  const path = relative(parent, child);
-  return !isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`);
+function nested(parent: string, child: string): boolean {
+  const route = paths.relative(parent, child);
+  return route === '' || (!paths.isAbsolute(route) && route !== '..' && !route.startsWith('..' + paths.sep));
 }
-const destination = canonical(resolve(process.env.MAKEFUN_OUTPUT_DIR ?? '/output'));
-const payloads = ['game', 'screenshots'].map(name => ({
-  source: canonical(join(import.meta.dirname, name)), target: join(destination, name),
-}));
-const caps = {
-  text_max_bytes: 163_840,
-  screenshots: { max: 4, max_bytes: 262_144 },
-  game_max_files: 993,
-  game_max_bytes: 50_331_648,
-  game_path_max_bytes: 1_000,
-};
-// Validate every source/target pair before removing any previous output.
-for (const payload of payloads) for (const other of payloads) {
-  if (contains(payload.source, other.target) || contains(other.target, payload.source)) throw new Error(`Output overlaps source: ${other.target}`);
+const destination = locate(paths.resolve(process.env.MAKEFUN_OUTPUT_DIR || '/output'));
+const packages = ['game', 'screenshots'].map(folder => ({ folder, source: realpathSync(paths.join(import.meta.dirname, folder)) }));
+for (const pack of packages) {
+  if (nested(pack.source, destination) || nested(destination, pack.source)) throw new Error('Output must not overlap game or screenshot sources');
 }
 mkdirSync(destination, { recursive: true });
-for (const { source, target } of payloads) {
-  rmSync(target, { recursive: true, force: true });
-  cpSync(source, target, {
+for (const pack of packages) {
+  const target = paths.join(destination, pack.folder);
+  rmSync(target, { force: true, recursive: true });
+  cpSync(pack.source, target, {
     recursive: true,
-    filter: entry => !relative(source, entry).split(sep).some(part => part.startsWith('.')),
+    filter(entry) { return paths.relative(pack.source, entry).split(paths.sep).every(part => part[0] !== '.'); },
   });
 }
-writeFileSync(join(destination, 'dossier.json'), buildDossier(destination, caps));
+const caps = {
+  game_path_max_bytes: 1000,
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  screenshots: { max_bytes: 262144, max: 4 },
+  text_max_bytes: 163840,
+};
+writeFileSync(paths.join(destination, 'dossier.json'), buildDossier(destination, caps));

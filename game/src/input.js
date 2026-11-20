@@ -1,51 +1,40 @@
-const north = ['KeyW', 'ArrowUp'], south = ['KeyS', 'ArrowDown'];
-const west = ['KeyA', 'ArrowLeft'], east = ['KeyD', 'ArrowRight'];
 export const ACTIONS = {
-  forward: north, back: south, left: west, right: east,
-  throttle: north, brake: south, steerLeft: west, steerRight: east,
-  jump: ['Space'], handbrake: ['Space'], sprint: ['ShiftLeft', 'ShiftRight'],
-  interact: ['KeyE'], exit: ['KeyE'], aim: ['Mouse2'], fire: ['Mouse0', 'KeyF'],
-  horn: ['KeyH'], map: ['KeyM'], pause: ['Escape', 'KeyP'], reload: ['KeyR'],
+  forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
+  throttle: ['KeyW', 'ArrowUp'], brake: ['KeyS', 'ArrowDown'], steerLeft: ['KeyA', 'ArrowLeft'], steerRight: ['KeyD', 'ArrowRight'],
+  jump: ['Space'], handbrake: ['Space'], sprint: ['ShiftLeft', 'ShiftRight'], interact: ['KeyE'], exit: ['KeyE'],
+  fire: ['Mouse0', 'KeyF'], aim: ['Mouse2'], reload: ['KeyR'], horn: ['KeyH'], map: ['KeyM'], pause: ['KeyP', 'Escape'],
 };
-const recognised = new Set(Object.values(ACTIONS).flat()), none = [];
 export function createInput(canvas) {
-  const held = new Set(), edges = new Set();
-  const movement = { x: 0, z: 0 }, driving = { throttle: false, brake: false, steer: 0, handbrake: false };
-  let dx = 0, dy = 0;
-  const locked = () => document.pointerLockElement === canvas;
-  function clear() { held.clear(); edges.clear(); dx = dy = 0; }
-  function begin(code) { if (!held.has(code)) { held.add(code); edges.add(code); } }
-  function active(action) {
-    for (const code of ACTIONS[action] ?? none) if (held.has(code)) return true;
-    return false;
-  }
-  function pressed(action) {
+  const keys = new Set(), edge = new Set(), axes = { x: 0, z: 0 }, wheel = {};
+  const delta = { x: 0, y: 0 };
+  function down(code) { if (!keys.has(code)) edge.add(code); keys.add(code); }
+  function test(set, action, consume) {
     let found = false;
-    for (const code of ACTIONS[action] ?? none) if (edges.delete(code)) found = true;
+    const bindings = ACTIONS[action];
+    if (bindings) for (let i = 0; i < bindings.length; i++) {
+      const code = bindings[i]; if (set.has(code)) { found = true; if (consume) set.delete(code); }
+    }
     return found;
   }
-  window.addEventListener('keydown', event => {
-    if (!recognised.has(event.code) || event.target?.closest?.('button,input,select,textarea,[contenteditable="true"]')) return;
-    event.preventDefault(); if (!event.repeat) begin(event.code);
-  });
-  window.addEventListener('keyup', event => held.delete(event.code));
-  window.addEventListener('blur', clear);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) clear(); });
-  document.addEventListener('pointerlockchange', clear);
-  document.addEventListener('mousemove', event => { if (locked()) { dx += event.movementX; dy += event.movementY; } });
-  canvas.addEventListener('mousedown', event => { if (locked()) begin(`Mouse${event.button}`); });
-  window.addEventListener('mouseup', event => held.delete(`Mouse${event.button}`));
-  canvas.addEventListener('contextmenu', event => event.preventDefault());
-  return {
-    active, pressed, clear, locked,
-    endStep() { edges.clear(); },
-    movement() { movement.x = +active('right') - active('left'); movement.z = +active('forward') - active('back'); return movement; },
+  const controller = {
+    active: action => test(keys, action, false), pressed: action => test(edge, action, true),
+    clear() { keys.clear(); edge.clear(); delta.x = delta.y = 0; },
+    endStep() { edge.clear(); }, locked: () => document.pointerLockElement === canvas,
+    movement() { axes.x = +controller.active('right') - +controller.active('left'); axes.z = +controller.active('forward') - +controller.active('back'); return axes; },
     driving() {
-      driving.throttle = active('throttle'); driving.brake = active('brake');
-      driving.steer = +active('steerRight') - active('steerLeft'); driving.handbrake = active('handbrake'); return driving;
+      wheel.throttle = controller.active('throttle'); wheel.brake = controller.active('brake');
+      wheel.handbrake = controller.active('handbrake'); wheel.steer = +controller.active('right') - +controller.active('left'); return wheel;
     },
-    readMouse(out) { out.x = dx; out.y = dy; dx = dy = 0; },
-    capture() { if (!locked()) { try { canvas.requestPointerLock?.()?.catch(() => {}); } catch { /* Browser requires a gesture. */ } } },
-    release() { clear(); if (locked()) document.exitPointerLock(); },
+    readMouse(out) { out.x = delta.x; out.y = delta.y; delta.x = delta.y = 0; },
+    capture() { try { const promise = canvas.requestPointerLock(); promise?.catch(() => {}); } catch {} },
+    release() { controller.clear(); if (controller.locked()) document.exitPointerLock(); },
   };
+  addEventListener('keydown', e => { if (e.target.closest?.('button,input,select')) return; if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault(); if (!e.repeat) down(e.code); });
+  addEventListener('keyup', e => keys.delete(e.code));
+  addEventListener('blur', controller.clear);
+  addEventListener('mousemove', e => { if (controller.locked()) { delta.x += e.movementX; delta.y += e.movementY; } });
+  canvas.addEventListener('mousedown', e => down('Mouse' + e.button));
+  addEventListener('mouseup', e => keys.delete('Mouse' + e.button));
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  return controller;
 }

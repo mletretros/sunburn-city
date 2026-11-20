@@ -1,29 +1,18 @@
-const initial = { level: 0, heat: 0, pulse: 0, x: 0, z: 0, searching: false, policeSight: false, lastCrime: null };
 export function createWanted() {
-  const state = { ...initial }, observers = new Set(); let unseen = 0;
-  function locate(point) { state.x = point.x; state.z = point.z; unseen = 0; }
-  function setHeat(points) {
-    state.heat = Math.max(0, Math.min(100, points));
-    const level = Math.ceil(state.heat / 20); state.searching = level > 0 && !state.policeSight;
-    if (level === state.level) return;
-    state.level = level; state.pulse = 1;
-    for (const observer of observers) observer(level, state);
+  const state = { heat: 0, level: 0, searching: false, x: 0, z: 0, pulse: 0, reason: '' };
+  const listeners = new Set(); let hiddenTime = 0;
+  function reconcile() {
+    const rank = state.heat <= 0 ? 0 : Math.min(5, Math.ceil(state.heat / 20));
+    if (rank !== state.level) { state.level = rank; listeners.forEach(fn => fn(rank)); }
   }
-  return {
-    state,
-    reset() { Object.assign(state, initial); unseen = 0; },
-    crime(reason, points, location) {
-      if (!Number.isFinite(points) || points <= 0) return;
-      locate(location); state.lastCrime = reason; setHeat(state.heat + points);
-    },
+  return { state,
+    reset() { state.heat = 0; state.searching = false; hiddenTime = 0; reconcile(); },
+    crime(reason, points, location) { state.heat = Math.min(100, state.heat + points); state.reason = reason; if (location) { state.x = location.x; state.z = location.z; } hiddenTime = 0; state.searching = false; reconcile(); },
     update(dt, visible, location) {
-      state.pulse = Math.max(0, state.pulse - dt * 1.8); state.policeSight = !!visible;
-      if (visible) { locate(location); state.searching = false; return; }
-      unseen += dt; state.searching = state.level > 0;
-      if (!state.searching || unseen <= 5.5) return;
-      const far = (location.x - state.x) ** 2 + (location.z - state.z) ** 2 > 65 * 65;
-      setHeat(state.heat - dt * (far ? 4.6 : 1.8));
+      state.pulse = .5 + Math.sin(hiddenTime * 5) * .5;
+      if (visible && state.heat) { hiddenTime = 0; state.searching = false; state.x = location.x; state.z = location.z; }
+      else { hiddenTime += dt; state.searching = state.level > 0; if (hiddenTime > 7) { state.heat = Math.max(0, state.heat - dt * 2.8); reconcile(); } }
     },
-    subscribe(observer) { observers.add(observer); return () => observers.delete(observer); },
+    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
   };
 }

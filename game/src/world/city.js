@@ -1,94 +1,64 @@
-import { WORLD as W, DISTRICTS } from '../config.js';
+import { WORLD, DISTRICTS } from '../config.js';
 import { makeRng } from '../rng.js';
-function zoneAt(c, r) {
-  if (r < 2 && c < 4) return 'dock';
-  if (c === 0) return 'palma';
-  if (r >= 2 && r <= 6 && c <= 4) return 'neon';
-  if (c === 6 || r === 8 && c >= 3) return 'causeway';
-  return 'coral';
-}
 export function createCity(seed) {
-  const random = makeRng(`${seed}:layout`);
-  const blocks = [], lots = [], intersections = [], roads = [], lanes = [], colliders = [];
-  const east = W.columns * W.cell, south = W.north + W.rows * W.cell, half = W.road / 2;
-  const bounds = { west: W.shore + 1.4, east: east + W.southMargin, north: W.north - W.southMargin, south: south + W.southMargin };
-  const nodeId = (c, r) => r * (W.columns + 1) + c;
-  for (let r = 0; r <= W.rows; r++) for (let c = 0; c <= W.columns; c++) {
-    intersections.push({ id: nodeId(c, r), x: c * W.cell, z: W.north + r * W.cell, roads: [] });
-  }
-  function connect(a, b) {
-    const start = intersections[a], end = intersections[b];
-    const road = { id: roads.length, from: a, to: b, ax: start.x, az: start.z, bx: end.x, bz: end.z, width: W.road, lanes: [] };
-    roads.push(road); start.roads.push(road.id); end.roads.push(road.id);
-    const dx = (end.x - start.x) / W.cell, dz = (end.z - start.z) / W.cell;
-    for (let direction = 1; direction >= -1; direction -= 2) {
-      const offset = W.road * .24 * direction, from = direction > 0 ? start : end, to = direction > 0 ? end : start;
-      const lane = { id: lanes.length, road: road.id, from: from.id, to: to.id,
-        ax: from.x - dz * offset, az: from.z + dx * offset, bx: to.x - dz * offset, bz: to.z + dx * offset };
-      lanes.push(lane); road.lanes.push(lane.id);
-    }
-  }
-  for (let r = 0; r <= W.rows; r++) for (let c = 0; c <= W.columns; c++) {
-    if (c < W.columns) connect(nodeId(c, r), nodeId(c + 1, r));
-    if (r < W.rows) connect(nodeId(c, r), nodeId(c, r + 1));
-  }
-  function addCollider(x, z, width, depth, height, base = 0) {
-    const box = { minX: x - width / 2, maxX: x + width / 2, minZ: z - depth / 2, maxZ: z + depth / 2, minY: base, maxY: base + height };
-    colliders.push(box); return box;
-  }
-  for (let r = 0; r < W.rows; r++) for (let c = 0; c < W.columns; c++) {
-    const district = zoneAt(c, r), style = DISTRICTS[district];
-    const block = { id: blocks.length, c, r, district, x: (c + .5) * W.cell, z: W.north + (r + .5) * W.cell,
-      side: W.cell - W.road, park: c === W.park.col && r === W.park.row, lots: [] };
-    blocks.push(block); if (block.park) continue;
-    const large = district === 'dock' || district === 'neon' && random.next() < .25;
-    const count = large ? 1 : 2, pitch = (block.side - W.sidewalk * 2) / count;
-    for (let i = 0; i < count; i++) for (let j = 0; j < count; j++) {
-      const x = block.x + (i - (count - 1) / 2) * pitch, z = block.z + (j - (count - 1) / 2) * pitch;
-      let height = random.range(...style.height);
-      if (district === 'neon') {
-        if (c > 2) height *= .88;
-        if (large) height += 20;
-        if (c === 1 && r === 5 && i === 0 && j === 0) height = 83;
-      }
-      const width = pitch * random.range(.74, .94), depth = pitch * random.range(.70, .91);
-      const lot = { id: lots.length, block: block.id, district, x, z, width, depth, height,
-        color: random.pick(style.colors), frontage: c === 0 && i === 0 ? 'west' : j === 0 ? 'north' : 'south' };
-      lot.collider = addCollider(x, z, width, depth, height + .8); lots.push(lot); block.lots.push(lot);
-    }
-  }
+  const W = WORLD, dice = makeRng(seed + '/architecture');
+  const city = { seed, east: W.columns * W.cell, south: W.north + W.rows * W.cell,
+    blocks: [], lots: [], roads: [], lanes: [], intersections: [], colliders: [], spawnPoints: [] };
+  city.bounds = { west: -41, east: city.east + 24, north: W.north - 24, south: city.south + 24 };
   function districtAt(x, z) {
-    return zoneAt(Math.max(0, Math.min(W.columns - 1, Math.floor(x / W.cell))), Math.max(0, Math.min(W.rows - 1, Math.floor((z - W.north) / W.cell))));
+    const col = Math.max(0, Math.floor(x / 58)), row = Math.max(0, Math.floor((z + 406) / 58));
+    if (col === 0) return 'palma';
+    if (row < 2 && col < 4) return 'dock';
+    if (col >= 6 || row >= 8 && col >= 3) return 'causeway';
+    return col < 5 && row < 7 ? 'neon' : 'coral';
   }
-  function isOnRoad(x, z) {
-    if (x < -half || x > east + half || z < W.north - half || z > south + half) return false;
-    return Math.abs(x - Math.round(x / W.cell) * W.cell) < half || Math.abs(z - W.north - Math.round((z - W.north) / W.cell) * W.cell) < half;
-  }
-  function groundAt(x, z) {
-    if (x < -half && x >= W.boardwalk - 2) return .14;
-    return isOnRoad(x, z) || x < 0 || x > east || z < W.north || z > south ? 0 : .14;
-  }
-  const spawnPoints = [{ ...W.spawn, district: 'palma' }];
-  for (const district of ['neon', 'dock', 'coral', 'causeway']) {
-    const block = blocks.find(item => item.district === district);
-    spawnPoints.push({ x: block.x, z: block.z - block.side / 2 - 2, heading: Math.PI, district });
-  }
-  return {
-    seed, bounds, east, south, blocks, lots, intersections, roads, lanes, colliders, spawnPoints, addCollider, districtAt, isOnRoad, groundAt,
-    nearestRoadPoint(x, z) {
-      const result = { x: 0, z: 0, road: null, distance: Infinity };
-      for (const road of roads) {
-        const px = Math.max(road.ax, Math.min(road.bx, x)), pz = Math.max(road.az, Math.min(road.bz, z)), distance = Math.hypot(px - x, pz - z);
-        if (distance < result.distance) Object.assign(result, { x: px, z: pz, road, distance });
-      }
-      return result;
-    },
-    blocked(x, y, z, radius) {
-      for (let i = 0; i < colliders.length; i++) {
-        const b = colliders[i];
-        if (y < b.maxY && y + 1.65 > b.minY && x > b.minX - radius && x < b.maxX + radius && z > b.minZ - radius && z < b.maxZ + radius) return true;
-      }
-      return false;
-    },
+  city.districtAt = districtAt;
+  city.isOnRoad = (x, z) => Math.abs(x - Math.round(x / 58) * 58) < 7.5 || Math.abs(z - Math.round(z / 58) * 58) < 7.5;
+  city.groundAt = (x, z) => x < -7.5 || !city.isOnRoad(x, z) ? .16 : .02;
+  city.addCollider = (x, z, w, d, h, base = 0) => {
+    const wall = { minX: x - w * .5, maxX: x + w * .5, minZ: z - d * .5, maxZ: z + d * .5, minY: base, maxY: base + h };
+    city.colliders.push(wall); return wall;
   };
+  for (let row = 0; row <= 9; row++) for (let col = 0; col <= 7; col++) city.intersections.push({ id: row * 8 + col, x: col * 58, z: -406 + row * 58, roads: [] });
+  function link(first, second) {
+    const a = city.intersections[first], b = city.intersections[second];
+    const avenue = { id: city.roads.length, from: first, to: second, ax: a.x, az: a.z, bx: b.x, bz: b.z, width: 15, lanes: [] };
+    city.roads.push(avenue); a.roads.push(avenue.id); b.roads.push(avenue.id);
+    const ux = (b.x - a.x) / 58, uz = (b.z - a.z) / 58;
+    for (let n = 0; n < 2; n++) {
+      const dir = n ? -1 : 1, start = n ? b : a, end = n ? a : b;
+      avenue.lanes.push(city.lanes.length);
+      city.lanes.push({ id: city.lanes.length, road: avenue.id, from: start.id, to: end.id, ax: start.x - uz * 3.3 * dir, az: start.z + ux * 3.3 * dir, bx: end.x - uz * 3.3 * dir, bz: end.z + ux * 3.3 * dir });
+    }
+  }
+  for (let n = 0; n < 80; n++) { if (n % 8 < 7) link(n, n + 1); if (n < 72) link(n, n + 8); }
+  for (let row = 0; row < 9; row++) for (let col = 0; col < 7; col++) {
+    const x = col * 58 + 29, z = row * 58 - 377, district = districtAt(x, z), palette = DISTRICTS[district];
+    const block = { id: city.blocks.length, c: col, r: row, x, z, district, side: 43, park: col === 1 && row === 7, lots: [] };
+    city.blocks.push(block);
+    if (block.park) continue;
+    for (let k = 0; k < 4; k++) {
+      const plot = { id: city.lots.length, block: block.id, district, x: x + (k % 2 ? 10 : -10), z: z + (k < 2 ? -10 : 10),
+        width: dice.range(14, 18), depth: dice.range(14, 18), height: dice.range(palette.height[0], palette.height[1]), color: dice.pick(palette.colors), frontage: col === 0 ? 'west' : 'north' };
+      plot.collider = city.addCollider(plot.x, plot.z, plot.width, plot.depth, plot.height);
+      block.lots.push(plot); city.lots.push(plot);
+    }
+  }
+  city.spawnPoints.push({ ...W.spawn, district: 'palma' }, { x: 58, z: -90, heading: 0, district: 'neon' }, { x: 116, z: -348, heading: 0, district: 'dock' }, { x: 290, z: -58, heading: 0, district: 'coral' }, { x: 406, z: 58, heading: 0, district: 'causeway' });
+  city.blocked = (x, y, z, radius) => {
+    for (let n = 0; n < city.colliders.length; n++) {
+      const b = city.colliders[n];
+      if (y < b.maxY && y + 1.7 > b.minY && x + radius > b.minX && x - radius < b.maxX && z + radius > b.minZ && z - radius < b.maxZ) return true;
+    }
+    return false;
+  };
+  city.nearestRoadPoint = (x, z) => {
+    let chosen = null, best = Infinity, px = 0, pz = 0;
+    for (const road of city.roads) {
+      const cx = Math.max(road.ax, Math.min(x, road.bx)), cz = Math.max(road.az, Math.min(z, road.bz)), distance = Math.hypot(x - cx, z - cz);
+      if (distance < best) { best = distance; chosen = road; px = cx; pz = cz; }
+    }
+    return { x: px, z: pz, road: chosen, distance: best };
+  };
+  return city;
 }

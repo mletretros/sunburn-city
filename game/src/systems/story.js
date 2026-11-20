@@ -1,63 +1,40 @@
-// Grid-aligned objectives stay reachable with every procedural building seed.
-const line = (speaker, text) => ({ speaker, text });
-const objective = (id, verb, x, z, text, options = {}) => ({ id, verb, target: { x, z }, text, ...options });
-const job = (id, name, brief, after, reputation, cash, earned, dialogue, objectives, ending) => ({
-  id, name, brief, unlock: { after, reputation }, rewards: { cash, reputation: earned }, dialogue, objectives, ending,
-});
-export const MISSIONS = [
-  job('salt-envelope', 'Salt in the Envelope', 'A courier takes an unusual delivery. Meet Duke on the Palma boardwalk.', null, 0, 350, 10,
-    [line('Duke', 'Mars Vega? Dispatch says you never lose a parcel. I need someone who knows which streets still belong to people.'),
-      line('Mars', 'Marisol on the invoice. Mars on the radio. Where am I going?'),
-      line('Duke', 'The blue locker on Palma. Bring the envelope to my street office. Same city, better rate.')],
-    [objective('meet', 'go', -13, 43, 'Go to Duke’s boardwalk contact', { radius: 4 }),
-      objective('parcel', 'collect', -13, 15, 'Collect the salt-stained envelope', { radius: 3,
-        call: [line('Duke', 'That envelope holds the dock access schedule. The Chrome Serpents tax every crate. We are cancelling their toll.')] }),
-      objective('office', 'go', -12, 78, 'Deliver the envelope to Duke’s street office', { radius: 4 })],
-    [line('Mars', 'I deliver things, Duke. Joining a heist crew costs extra.'), line('Duke', 'Consider this a very well-paid wrong turn.')]),
-  job('borrowed-sunshine', 'Borrowed Sunshine', 'Steal the crew’s gold Sirocco RS and return it intact.', 'salt-envelope', 10, 650, 15,
-    [line('Duke', 'Inez needs the gold Sirocco by the Palma lights. That exact car carries a copied port transponder.'), line('Mars', 'A stolen key in a stolen car. Your paperwork must be beautiful.')],
-    [objective('car', 'steal', -5, -29, 'Steal the gold Sirocco RS · E at its door', { vehicle: 5, radius: 4 }),
-      objective('garage', 'deliver', -5, 87, 'Deliver the gold Sirocco to Inez before the gate shuts', { radius: 7, time: 80,
-        call: [line('Inez', 'Keep the transponder out of the sea and the bonnet out of a wall. I can fix everything else.')] })],
-    [line('Inez', 'Still gold. Still in one piece. You have a seat in this crew.')]),
-  job('quiet-frequency', 'Quiet Frequency', 'Retrieve a radio key from Neon Row without a patrol following you.', 'borrowed-sunshine', 25, 800, 20,
-    [line('Duke', 'A contact left the Serpent radio key by the Neon tram stop. Keep this quiet: one star at most.'), line('Mars', 'Your plan and my survival instinct finally agree.')],
-    [objective('radio', 'collect', 58, -116, 'Collect the radio key · keep heat at one star or less', { radius: 4, maxWanted: 1 }),
-      objective('hide', 'lose', 58, -58, 'Lose the Civic Guard, then reach the Neon dead drop', { radius: 9, heat: 32,
-        call: [line('Duke', 'The locker had a silent alarm. Break their line of sight. The dead drop stays shut until the heat clears.')] })],
-    [line('Mars', 'This channel lists eviction crews alongside the crates.'), line('Duke', 'Then we take their payroll and their proof.')]),
-  job('cold-manifest', 'Cold Manifest', 'Recover the Dockside manifest before the shift changes.', 'quiet-frequency', 45, 1100, 25,
-    [line('Inez', 'The port manifest gives us the payroll route. A copy is taped under the Dockside weighbridge.'), line('Mars', 'Paper. A security system that fits in my courier bag.')],
-    [objective('manifest', 'collect', 116, -348, 'Collect the hidden Dockside manifest', { radius: 4 }),
-      objective('relay', 'go', 116, -232, 'Deliver the manifest before the shift changes', { radius: 6, time: 75,
-        call: [line('Duke', 'The route is real. Rafe Voss, the Serpent treasurer, signed those eviction orders himself.')] })],
-    [line('Mars', 'We return the deposits and copy every signature.'), line('Inez', 'That sounds like a crew worth driving for.')]),
-  job('cut-the-rattle', 'Cut the Rattle', 'Stop Voss’s armed enforcer and recover his vault key.', 'cold-manifest', 70, 1400, 30,
-    [line('Duke', 'Coil is waiting at the freight crossing with a gun and our contact list. Voss wants that list burned.'), line('Mars', 'Then Coil goes no farther.')],
-    [objective('crossing', 'go', 174, -290, 'Go to the freight crossing', { radius: 12 }),
-      objective('coil', 'eliminate', 174, -310, 'Take out Coil · aim with right mouse, fire with left', { enemies: 1,
-        call: [line('Inez', 'Red jacket, silver mask. Keep cover between you and his gun. He has the vault key.')] }),
-      objective('key', 'collect', 174, -310, 'Collect Coil’s vault key', { radius: 3 })],
-    [line('Mars', 'Key secured. The families get paid before anyone takes a cut.'), line('Duke', 'You have my word. Hold me to it.')]),
-  job('payroll-tide', 'Payroll at High Tide', 'Take the marked payroll van to Coral Heights.', 'cut-the-rattle', 100, 2200, 40,
-    [line('Inez', 'The white Parcel 200 is outside the vault. I have the cameras. You have the key.'), line('Mars', 'Dispatch will never believe this mileage.')],
-    [objective('van', 'steal', 113, -377, 'Steal the white Parcel 200 payroll van', { vehicle: 3 }),
-      objective('drop', 'deliver', 290, -58, 'Deliver the payroll van intact to Coral Heights', { radius: 8, time: 150, heat: 28,
-        call: [line('Duke', 'Voss knows. The Guard is on the radio. Take the wide streets and keep rolling.')] })],
-    [line('Inez', 'The money arrived with a tracker under the rear axle.'), line('Mars', 'Kill it. Company is coming.')]),
-  job('glass-rain', 'Glass Rain', 'Survive the Serpents’ ambush and escape Neon Row.', 'payroll-tide', 140, 1800, 40,
-    [line('Duke', 'I moved the money, but the Serpents followed my car to the decoy exchange.'), line('Mars', 'We buy Inez time. Then you help me finish this.')],
-    [objective('exchange', 'go', 232, -116, 'Reach the decoy exchange in Neon Row', { radius: 8 }),
-      objective('ambush', 'survive', 232, -116, 'Survive the Chrome Serpent ambush · stay in the marked area', {
-        area: { x: 232, z: -116, radius: 42 }, duration: 30, enemies: 4,
-        call: [line('Inez', 'Thirty seconds to upload their ledger. Stay near the relay or the link drops.')] }),
-      objective('escape', 'escape', 348, -58, 'Escape Neon Row through the eastern checkpoint', { district: 'neon', radius: 10, time: 80 })],
-    [line('Duke', 'I used to fix deals for Voss. My name is in that ledger too.'), line('Mars', 'Then you do not edit it. We send the whole thing.')]),
-  job('open-circuit', 'Open Circuit', 'Broadcast the uncut ledger from the Causeway transmitter.', 'glass-rain', 180, 4000, 70,
-    [line('Inez', 'Every deposit is back with its owner. One delivery left: the original ledger to the Causeway transmitter.'), line('Mars', 'No buyer. No fixer’s fee. Sunburn gets the receipts.')],
-    [objective('ledger', 'collect', 290, 0, 'Collect the original ledger · arrive without a pursuit', { radius: 4, maxWanted: 1 }),
-      objective('broadcast', 'go', 406, 58, 'Deliver the ledger to the Causeway transmitter', { radius: 5, time: 100,
-        call: [line('Duke', 'I am staying on the line. Tell them I signed those deals. Let them hear it from me.')] }),
-      objective('clear', 'lose', 348, 116, 'Lose the police and reach the crew’s Causeway safehouse', { radius: 9, heat: 40 })],
-    [line('Inez', 'The ledger is everywhere. Voss cannot buy every radio.'), line('Mars', 'Keep the engine warm. Tomorrow we open a courier co-op. We choose the deliveries.')]),
+// The same contract describes a job, its unlock condition and its live objectives.
+const route = (id, verb, x, z, text, extra = {}) => ({ id, verb, text, target: { x, z }, radius: 4, ...extra });
+const radio = (speaker, text) => ({ speaker, text });
+const records = [
+  ['salt-envelope', 'Salt in the Envelope', 350, 10, 'Duke',
+    'Mars, the dock schedule is in a salt-stained envelope. Pick it up on Palma. The Chrome Serpents have charged this city for its own streets long enough.',
+    [route('meet', 'go', -13, 43, 'Meet Duke’s boardwalk contact'), route('parcel', 'collect', -13, 15, 'Collect the salt-stained envelope', { call: [radio('Duke', 'The envelope opens a door at the port. Deliver it to my street office. Stay where people can see you.')] }), route('office', 'go', -12, 78, 'Deliver the envelope to Duke’s office')]],
+  ['borrowed-sunshine', 'Borrowed Sunshine', 650, 15, 'Inez',
+    'A gold Sirocco RS is waiting at the Palma lights. Its port transponder is the key. Borrow the sunshine and bring it back with four wheels.',
+    [route('car', 'steal', -5, -29, 'Steal the gold Sirocco RS', { vehicle: 5 }), route('garage', 'deliver', -5, 87, 'Deliver the Sirocco to Inez Auto', { time: 80, radius: 7 })]],
+  ['quiet-frequency', 'Quiet Frequency', 800, 20, 'Duke',
+    'Neon Row has a radio key we need. This is a quiet run, Mars. More than one star and our contact disappears.',
+    [route('radio', 'collect', 58, -116, 'Retrieve the Neon radio key · one star maximum', { maxWanted: 1 }), route('hide', 'lose', 58, -58, 'Lose the Guard and reach the dead drop', { heat: 32, radius: 9 })]],
+  ['cold-manifest', 'Cold Manifest', 1100, 25, 'Inez',
+    'There is a manifest under the Dockside weighbridge. The payroll route and every eviction order are on it. Get there before the shift changes.',
+    [route('manifest', 'collect', 116, -348, 'Recover the Dockside manifest'), route('relay', 'go', 116, -232, 'Bring the manifest to the relay', { time: 75, radius: 6 })]],
+  ['cut-the-rattle', 'Cut the Rattle', 1400, 30, 'Duke',
+    'Voss sent Coil to burn our contact list at the freight crossing. He is armed. Stop him, take the vault key, and keep our people out of this.',
+    [route('crossing', 'go', 174, -290, 'Reach the freight crossing', { radius: 12 }), route('coil', 'eliminate', 174, -310, 'Stop Coil · aim and fire', { enemies: 1 }), route('key', 'collect', 174, -310, 'Recover Coil’s vault key')]],
+  ['payroll-tide', 'Payroll at High Tide', 2200, 40, 'Inez',
+    'White Parcel 200 outside the vault. I have the cameras. You have the key. The payroll belongs to the families Voss pushed out.',
+    [route('van', 'steal', 113, -377, 'Take the white payroll van', { vehicle: 3 }), route('drop', 'deliver', 290, -58, 'Deliver the payroll to Coral Heights', { time: 150, heat: 28, radius: 8 })]],
+  ['glass-rain', 'Glass Rain', 1800, 40, 'Duke',
+    'The Serpents followed me to the Neon exchange. Inez needs thirty seconds at the relay. Hold them here, then get clear of the district.',
+    [route('exchange', 'go', 232, -116, 'Reach the decoy exchange', { radius: 8 }), route('ambush', 'survive', 232, -116, 'Hold the relay for thirty seconds', { duration: 30, enemies: 4, area: { x: 232, z: -116, radius: 42 } }), route('escape', 'escape', 348, -58, 'Escape through the eastern checkpoint', { time: 80, radius: 10, district: 'neon' })]],
+  ['open-circuit', 'Open Circuit', 4000, 70, 'Inez',
+    'The deposits are home. One last delivery: the original ledger to the Causeway transmitter. Duke’s name stays in it. Nobody gets to edit the truth.',
+    [route('ledger', 'collect', 290, 0, 'Collect the uncut ledger · arrive quietly', { maxWanted: 1 }), route('broadcast', 'go', 406, 58, 'Broadcast the ledger at the transmitter', { time: 100, radius: 5 }), route('clear', 'lose', 348, 116, 'Lose the police and reach the safehouse', { heat: 40, radius: 9 })]],
 ];
+let reputationRequired = 0;
+export const MISSIONS = records.map((entry, index) => {
+  const [id, name, cash, reputation, speaker, speech, objectives] = entry;
+  const mission = {
+    id, name, brief: speech, unlock: { after: index ? records[index - 1][0] : null, reputation: reputationRequired },
+    rewards: { cash, reputation }, objectives,
+    dialogue: [radio(speaker, speech), radio('Mars', index === 7 ? 'No more tolls. No more disappearing names. Let Sunburn hear every word.' : 'I know the streets. Keep the radio open; I will make the delivery.')],
+    ending: [radio('Mars', index === 7 ? 'Ledger delivered. Tomorrow we start a courier co-op. Our city, our routes.' : 'Delivery confirmed. Tell the crew to keep the engine warm.'), radio(speaker, index === 7 ? 'Every radio has the proof. Voss cannot buy the tide.' : 'Payment is through. There is more work when you are ready.')],
+  };
+  reputationRequired += reputation; return mission;
+});

@@ -1,117 +1,72 @@
 import * as THREE from 'three';
 import { makeRng } from '../rng.js';
-
-const CAPACITY = 12;
+const MAGAZINE = 12, RANGE = 74, DROP_COUNT = 16;
 export function createProjectiles(scene, physics, effects, audio, wanted, pedestrians, police, seed) {
-  const rng = makeRng(`${seed}:combat`);
-  const ammo = { current: CAPACITY, reserve: 72, reloading: 0, aiming: false };
-  const origin = new THREE.Vector3(), direction = new THREE.Vector3(), end = new THREE.Vector3(), muzzle = new THREE.Vector3();
-  const ray = new THREE.Ray(), box = new THREE.Box3(), point = new THREE.Vector3(), local = new THREE.Vector3();
-  const cash = new THREE.InstancedMesh(new THREE.BoxGeometry(.29, .085, .20), new THREE.MeshStandardMaterial({ color: 0x80f5a5 }), 16);
-  const pose = new THREE.Object3D(), hidden = new THREE.Matrix4().makeScale(0, 0, 0);
-  const drops = Array.from({ length: cash.count }, () => ({ life: 0, x: 0, y: 0, z: 0, value: 0 }));
-  let nextDrop = 0, cooldown = 0, best, target, hitCar;
-  let missionCombat = null;
-  cash.frustumCulled = false; scene.add(cash);
+  const ammo = { current: MAGAZINE, reserve: 72, reloading: 0, aiming: false }, origin = new THREE.Vector3(), direction = new THREE.Vector3(), endpoint = new THREE.Vector3(), muzzle = new THREE.Vector3(), point = new THREE.Vector3(), ray = new THREE.Ray(), box = new THREE.Box3();
+  const hidden = new THREE.Matrix4().makeScale(0, 0, 0), pose = new THREE.Object3D(), bundles = new THREE.InstancedMesh(new THREE.BoxGeometry(.29, .085, .2), new THREE.MeshStandardMaterial({ color: 0x80f5a5 }), DROP_COUNT);
+  bundles.frustumCulled = false; bundles.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(bundles);
+  const drops = Array.from({ length: DROP_COUNT }, () => ({ life: 0, x: 0, y: 0, z: 0, value: 0 }));
+  let random, nextDrop = 0, cooldown = 0, closest = RANGE, victim = null, vehicle = null, mission = null;
   function reset() {
-    ammo.current = CAPACITY; ammo.reserve = 72; ammo.reloading = cooldown = 0; ammo.aiming = false;
-    for (let i = 0; i < drops.length; i++) { drops[i].life = 0; cash.setMatrixAt(i, hidden); }
-    cash.instanceMatrix.needsUpdate = true;
+    random = makeRng(`${seed}:combat`); nextDrop = cooldown = ammo.reloading = 0; ammo.current = MAGAZINE; ammo.reserve = 72; ammo.aiming = false;
+    for (let i = 0; i < DROP_COUNT; i++) { drops[i].life = 0; bundles.setMatrixAt(i, hidden); } bundles.instanceMatrix.needsUpdate = true;
   }
-  reset();
-  function drop(position, value) {
-    const d = drops[nextDrop++ % drops.length];
-    d.x = position.x; d.y = physics.groundAt(position.x, position.z); d.z = position.z; d.value = value; d.life = 45;
-  }
-  function reload() {
-    if (!ammo.reloading && ammo.current < CAPACITY && ammo.reserve) { ammo.reloading = 1.16; audio.reload(); }
-  }
-  function checkPerson(person, height) {
+  function drop(position, value) { const item = drops[nextDrop]; nextDrop = (nextDrop + 1) % DROP_COUNT; item.x = position.x; item.y = physics.groundAt(position.x, position.z); item.z = position.z; item.value = value; item.life = 45; }
+  function reload() { if (ammo.reloading || ammo.current === MAGAZINE || !ammo.reserve) return; ammo.reloading = 1.16; audio.reload(); }
+  function personHit(person, height) {
     if (!person.active || person.health <= 0) return;
-    const p = person.position, r = .31;
-    box.min.set(p.x - r, p.y + .12, p.z - r); box.max.set(p.x + r, p.y + height, p.z + r);
-    ray.set(origin, direction);
-    if (ray.intersectBox(box, point) && point.distanceTo(origin) < best) { best = point.distanceTo(origin); target = person; hitCar = null; }
+    const p = person.position; box.min.set(p.x - .31, p.y + .12, p.z - .31); box.max.set(p.x + .31, p.y + height, p.z + .31); ray.set(origin, direction);
+    if (!ray.intersectBox(box, point)) return; const distance = origin.distanceTo(point); if (distance >= closest) return; closest = distance; victim = person; vehicle = null;
   }
-  function checkCar(car) {
+  function carHit(car) {
     if (!car.active || car.destroyed) return;
-    const p = car.position, { c, s, w, l } = car.footprint;
-    const dx = origin.x - p.x, dz = origin.z - p.z;
-    ray.origin.set(dx * c + dz * s, origin.y - p.y, -dx * s + dz * c);
-    local.set(direction.x * c + direction.z * s, direction.y, -direction.x * s + direction.z * c);
-    ray.direction.copy(local);
-    box.min.set(-w, .22, -l); box.max.set(w, car.spec.sill, l);
-    let distance = ray.intersectBox(box, point) ? point.distanceTo(ray.origin) : Infinity;
-    box.min.set(-w * .84, car.spec.sill, car.spec.offset - l * car.spec.cabin);
-    box.max.set(w * .84, car.spec.roof, car.spec.offset + l * car.spec.cabin);
-    if (ray.intersectBox(box, point)) distance = Math.min(distance, point.distanceTo(ray.origin));
-    if (distance < best) { best = distance; target = null; hitCar = car; }
+    const { position: p, spec } = car, { c, s, w, l } = car.footprint, dx = origin.x - p.x, dz = origin.z - p.z;
+    ray.origin.set(dx * c + dz * s, origin.y - p.y, -dx * s + dz * c); ray.direction.set(direction.x * c + direction.z * s, direction.y, -direction.x * s + direction.z * c);
+    box.min.set(-w, .22, -l); box.max.set(w, spec.sill, l); let distance = ray.intersectBox(box, point) ? ray.origin.distanceTo(point) : Infinity;
+    box.min.set(-w * .84, spec.sill, spec.offset - l * spec.cabin); box.max.set(w * .84, spec.roof, spec.offset + l * spec.cabin);
+    if (ray.intersectBox(box, point)) distance = Math.min(distance, ray.origin.distanceTo(point)); if (distance >= closest) return; closest = distance; vehicle = car; victim = null;
   }
   function shoot(camera, player) {
-    if (cooldown || ammo.reloading || player.vehicle) return;
-    if (!ammo.current) { reload(); return; }
-    ammo.current--; cooldown = .25;
-    camera.getWorldPosition(origin); camera.getWorldDirection(direction);
-    best = physics.wallDistance(origin, direction, 74); target = hitCar = null;
-    for (const cop of police.officers) checkPerson(cop, 1.65);
-    if (missionCombat) for (const enemy of missionCombat.enemies) checkPerson(enemy, 1.8);
-    for (const person of pedestrians.walkers) checkPerson(person, person.mode === 'down' ? .42 : person.height * 1.66);
-    for (const car of physics.vehicles) checkCar(car);
-    end.copy(origin).addScaledVector(direction, best);
-    const p = player.position, s = Math.sin(player.heading), c = Math.cos(player.heading);
-    muzzle.set(p.x + s * .63 + c * .25, p.y + 1.35, p.z - c * .63 + s * .25);
-    direction.subVectors(end, muzzle);
-    const length = direction.length(); direction.normalize();
-    const wall = physics.wallDistance(muzzle, direction, length);
-    if (wall < length - .07) { target = hitCar = null; end.copy(muzzle).addScaledVector(direction, wall); }
-    effects.shot(muzzle, end); if (best < 74 || wall < length) effects.impact(end.x, end.y, end.z);
-    audio.gunshot(); wanted.crime('public-fire', 9, p); pedestrians.hearGunfire(p.x, p.z);
-    if (hitCar) {
-      hitCar.health = Math.max(0, hitCar.health - 24);
-      if (hitCar.police) wanted.crime('cruiser-damage', 13, p);
-    } else if (target) {
-      const killed = target.kind === 'serpent' ? missionCombat.hitEnemy(target, 38) : target.kind === 'officer' ? police.hit(target, 36) : pedestrians.hit(target, 38, p);
-      audio.impact();
-      if (killed) {
-        if (target.kind !== 'serpent') drop(target.position, target.kind === 'officer' ? 45 : 18);
-        if (target.kind === 'officer') wanted.crime('officer-down', 29, p);
-      }
+    if (cooldown || ammo.reloading || player.vehicle) return; if (!ammo.current) { reload(); return; }
+    ammo.current--; cooldown = .25; camera.getWorldPosition(origin); camera.getWorldDirection(direction); closest = physics.wallDistance(origin, direction, RANGE); victim = vehicle = null;
+    for (let i = 0; i < police.officers.length; i++) personHit(police.officers[i], 1.65);
+    if (mission) for (let i = 0; i < mission.enemies.length; i++) personHit(mission.enemies[i], 1.8);
+    for (let i = 0; i < pedestrians.walkers.length; i++) { const person = pedestrians.walkers[i]; personHit(person, person.mode === 'down' ? .42 : person.height * 1.66); }
+    for (let i = 0; i < physics.vehicles.length; i++) carHit(physics.vehicles[i]);
+    endpoint.copy(origin).addScaledVector(direction, closest); const p = player.position, s = Math.sin(player.heading), c = Math.cos(player.heading);
+    muzzle.set(p.x + s * .63 + c * .25, p.y + 1.35, p.z - c * .63 + s * .25); direction.subVectors(endpoint, muzzle); const distance = direction.length(); direction.normalize(); const wall = physics.wallDistance(muzzle, direction, distance);
+    if (wall < distance - .07) { victim = vehicle = null; endpoint.copy(muzzle).addScaledVector(direction, wall); }
+    effects.shot(muzzle, endpoint); if (closest < RANGE || wall < distance) effects.impact(endpoint.x, endpoint.y, endpoint.z); audio.gunshot(); wanted.crime('public-fire', 9, p); pedestrians.hearGunfire(p.x, p.z);
+    if (vehicle) { vehicle.health = Math.max(0, vehicle.health - 24); if (vehicle.police) wanted.crime('cruiser-damage', 13, p); }
+    else if (victim) {
+      const killed = victim.kind === 'serpent' ? mission.hitEnemy(victim, 38) : victim.kind === 'officer' ? police.hit(victim, 36) : pedestrians.hit(victim, 38, p); audio.impact(); if (!killed) return;
+      if (victim.kind !== 'serpent') drop(victim.position, victim.kind === 'officer' ? 45 : 18); if (victim.kind === 'officer') wanted.crime('officer-down', 29, p);
     }
   }
   function officerShot(cop, player) {
-    const p = player.vehicle?.position ?? player.position, q = cop.position;
-    muzzle.set(q.x + Math.sin(cop.heading) * .43, q.y + 1.30, q.z - Math.cos(cop.heading) * .43);
-    const accurate = rng.next() < (player.vehicle ? .32 : .56);
-    end.set(p.x + (accurate ? 0 : rng.range(-2.5, 2.5)), p.y + (player.vehicle ? .87 : 1.15), p.z + (accurate ? 0 : rng.range(-2.5, 2.5)));
-    direction.subVectors(end, muzzle); const distance = direction.length(); direction.normalize();
-    const wall = physics.wallDistance(muzzle, direction, distance);
-    if (wall < distance) end.copy(muzzle).addScaledVector(direction, wall);
-    effects.shot(muzzle, end); audio.gunshot(.13);
-    if (!accurate || wall < distance - .1) { if (wall < distance) effects.impact(end.x, end.y, end.z); return false; }
+    const p = player.vehicle?.position ?? player.position, q = cop.position; muzzle.set(q.x + Math.sin(cop.heading) * .43, q.y + 1.3, q.z - Math.cos(cop.heading) * .43);
+    const accurate = random.next() < (player.vehicle ? .32 : .56); endpoint.set(p.x + (accurate ? 0 : random.range(-2.5, 2.5)), p.y + (player.vehicle ? .87 : 1.15), p.z + (accurate ? 0 : random.range(-2.5, 2.5)));
+    direction.subVectors(endpoint, muzzle); const distance = direction.length(); direction.normalize(); const wall = physics.wallDistance(muzzle, direction, distance);
+    if (wall < distance) endpoint.copy(muzzle).addScaledVector(direction, wall); effects.shot(muzzle, endpoint); audio.gunshot(.13);
+    if (!accurate || wall < distance - .1) { if (wall < distance) effects.impact(endpoint.x, endpoint.y, endpoint.z); return false; }
     if (player.vehicle) player.vehicle.health = Math.max(0, player.vehicle.health - 6);
-    else {
-      const absorbed = Math.min(player.armour, 5); player.armour -= absorbed; player.health = Math.max(0, player.health - (8 - absorbed));
-    }
-    effects.impact(end.x, end.y, end.z); return true;
+    else { const absorbed = Math.min(player.armour, 5); player.armour -= absorbed; player.health = Math.max(0, player.health - 8 + absorbed); }
+    effects.impact(endpoint.x, endpoint.y, endpoint.z); return true;
   }
+  reset();
   return {
-    ammo, reset, reload, shoot, officerShot, drop,
-    setMissionCombat(value) { missionCombat = value; },
+    ammo, reset, reload, shoot, officerShot, drop, setMissionCombat(runtime) { mission = runtime; },
     update(dt, player) {
       cooldown = Math.max(0, cooldown - dt);
-      if (ammo.reloading && (ammo.reloading -= dt) <= 0) {
-        const n = Math.min(CAPACITY - ammo.current, ammo.reserve); ammo.current += n; ammo.reserve -= n; ammo.reloading = 0;
-      }
+      if (ammo.reloading && (ammo.reloading -= dt) <= 0) { const load = Math.min(MAGAZINE - ammo.current, ammo.reserve); ammo.current += load; ammo.reserve -= load; ammo.reloading = 0; }
       let collected = 0, dirty = false;
       for (let i = 0; i < drops.length; i++) {
-        const d = drops[i]; if (d.life <= 0) continue;
-        d.life -= dt; dirty = true;
-        if (!player.vehicle && Math.hypot(player.position.x - d.x, player.position.z - d.z) < .9) { collected += d.value; d.life = 0; }
-        if (d.life <= 0) { cash.setMatrixAt(i, hidden); continue; }
-        pose.position.set(d.x, d.y + .24 + Math.sin(d.life * 4) * .08, d.z); pose.rotation.y = d.life * 2.4; pose.updateMatrix(); cash.setMatrixAt(i, pose.matrix);
+        const item = drops[i]; if (item.life <= 0) continue; dirty = true; item.life -= dt;
+        if (!player.vehicle && Math.hypot(player.position.x - item.x, player.position.z - item.z) < .9) { collected += item.value; item.life = 0; }
+        if (item.life <= 0) bundles.setMatrixAt(i, hidden);
+        else { pose.position.set(item.x, item.y + .24 + Math.sin(item.life * 4) * .08, item.z); pose.rotation.y = item.life * 2.4; pose.updateMatrix(); bundles.setMatrixAt(i, pose.matrix); }
       }
-      if (dirty) cash.instanceMatrix.needsUpdate = true;
-      player.cash += collected; return collected;
+      if (dirty) bundles.instanceMatrix.needsUpdate = true; player.cash += collected; return collected;
     },
   };
 }

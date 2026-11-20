@@ -1,44 +1,36 @@
-// Sunburn City, a gta6-01 entry: explore a seeded coastal city on foot as bike courier Mars Vega.
-// game/ contains the static Chrome game, with vendored three.js and procedural art, playable offline.
-// This Node 22 entrypoint copies game/ and screenshots/ to /output and writes the judge's
-// dossier.json with the vendored make.fun library.
-// Caps: game entries, bytes and path length; index bytes; screenshot count/bytes; dossier text.
-//
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { cpSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
-// Match the kit exactly; these are acceptance limits, not quality settings.
-const DOSSIER_TEXT_BYTES = 163840;
-const SCREENSHOT_BYTES = 262144;
-const GAME_ENTRIES = 993;
-const GAME_BYTES = 50331648;
-
-mkdirSync(out, { recursive: true });
-// Apply the filter to every copied entry, including nested directories.
-const publicEntry = (source: string) => !basename(source).startsWith('.');
-cpSync(join(here, 'game'), join(out, 'game'), { recursive: true, filter: publicEntry });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true, filter: publicEntry });
-
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game
-// files, in all, or a path under game/ over 1000 bytes: game/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
-    text_max_bytes: DOSSIER_TEXT_BYTES,
-    screenshots: { max: 4, max_bytes: SCREENSHOT_BYTES },
-    game_max_files: GAME_ENTRIES,
-    game_max_bytes: GAME_BYTES,
-    game_path_max_bytes: 1000,
-  }),
-);
+// Canonicalise absent destinations too, preventing a symlinked ancestor from hiding overlap.
+function canonical(path: string): string {
+  return existsSync(path) ? realpathSync(path) : join(canonical(dirname(path)), basename(path));
+}
+function contains(parent: string, child: string): boolean {
+  const path = relative(parent, child);
+  return !isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`);
+}
+const destination = canonical(resolve(process.env.MAKEFUN_OUTPUT_DIR ?? '/output'));
+const payloads = ['game', 'screenshots'].map(name => ({
+  source: canonical(join(import.meta.dirname, name)), target: join(destination, name),
+}));
+const caps = {
+  text_max_bytes: 163_840,
+  screenshots: { max: 4, max_bytes: 262_144 },
+  game_max_files: 993,
+  game_max_bytes: 50_331_648,
+  game_path_max_bytes: 1_000,
+};
+// Validate every source/target pair before removing any previous output.
+for (const payload of payloads) for (const other of payloads) {
+  if (contains(payload.source, other.target) || contains(other.target, payload.source)) throw new Error(`Output overlaps source: ${other.target}`);
+}
+mkdirSync(destination, { recursive: true });
+for (const { source, target } of payloads) {
+  rmSync(target, { recursive: true, force: true });
+  cpSync(source, target, {
+    recursive: true,
+    filter: entry => !relative(source, entry).split(sep).some(part => part.startsWith('.')),
+  });
+}
+writeFileSync(join(destination, 'dossier.json'), buildDossier(destination, caps));

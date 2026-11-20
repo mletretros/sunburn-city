@@ -1,48 +1,46 @@
-import { DISTRICTS } from '../config.js';
+import { PLAYER, DISTRICTS } from '../config.js';
 import { MISSIONS } from './story.js';
-
-// Keep the storage key so phase-three slots migrate rather than disappearing.
 export const SLOT = 'sunburn-city.slot.v1';
 export const VERSION = 2;
-const finite = (value, fallback, low, high) => Number.isFinite(value) ? Math.max(low, Math.min(high, value)) : fallback;
-
+const states = new Set(['offered', 'active', 'failed', 'complete']), reputation = [0];
+for (const job of MISSIONS) reputation.push(reputation.at(-1) + job.rewards.reputation);
+const number = (value, fallback, max, min = 0) => Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+const count = (value, fallback, max) => Math.floor(number(value, fallback, max));
+const coordinate = (value, fallback) => number(value, fallback, 10000, -10000);
+const hasPose = record => Number.isFinite(record?.x) && Number.isFinite(record.z) && Number.isFinite(record.heading);
+function decodeCar(record) {
+  return hasPose(record) && Number.isFinite(record.health) ? { heading: record.heading, x: coordinate(record.x, 0), z: coordinate(record.z, 0), health: number(record.health, 100, 100) } : null;
+}
+function decodeStory(record, legacyIndex) {
+  const index = count(record?.index, legacyIndex, MISSIONS.length), sequence = MISSIONS[index]?.objectives, step = count(record?.step, 0, sequence ? sequence.length - 1 : 0);
+  return { index, step, state: states.has(record?.state) ? record.state : 'offered', remaining: number(record?.remaining, sequence?.[step]?.time ?? 0, 600),
+    survived: number(record?.survived, 0, 60), failure: typeof record?.failure === 'string' ? record.failure.slice(0, 160) : '',
+    enemyHealth: Array.isArray(record?.enemyHealth) ? record.enemyHealth.slice(0, 4).map(value => number(value, 100, 100)) : null, car: decodeCar(record?.car) };
+}
 export function readSlot() {
   try {
-    const data = JSON.parse(localStorage.getItem(SLOT));
-    if (!data || ![1, VERSION].includes(data.version) || typeof data.seed !== 'string' || !data.seed || data.seed.length > 128 ||
-      !['x', 'z', 'heading'].every(key => Number.isFinite(data[key]))) return null;
-    const mission = Math.floor(finite(data.mission, 0, 0, MISSIONS.length));
-    const story = data.version === VERSION && data.story && typeof data.story === 'object' ? data.story : {};
-    const index = Math.floor(finite(story.index, mission, 0, MISSIONS.length));
-    const step = Math.floor(finite(story.step, 0, 0, 10));
-    return { ...data, version: VERSION, mission: index,
-      cash: finite(data.cash, 240, 0, 1e9), reputation: finite(data.reputation, MISSIONS.slice(0, index).reduce((sum, m) => sum + m.rewards.reputation, 0), 0, 1e6),
-      health: finite(data.health, 100, 1, 100), armour: finite(data.armour, 0, 0, 100), seconds: finite(data.seconds, 0, 0, 1e9),
-      district: Object.hasOwn(DISTRICTS, data.district) ? data.district : 'palma',
-      story: { index, step, state: ['active', 'failed', 'offered', 'complete'].includes(story.state) ? story.state : 'offered',
-        remaining: finite(story.remaining, MISSIONS[index]?.objectives[step]?.time || 0, 0, 600), survived: finite(story.survived, 0, 0, 60),
-        enemyHealth: Array.isArray(story.enemyHealth) ? story.enemyHealth.slice(0, 4).map(n => finite(n, 100, 0, 100)) : null,
-        car: story.car && ['x', 'z', 'heading', 'health'].every(key => Number.isFinite(story.car[key])) ? story.car : null },
-    };
+    const saved = JSON.parse(localStorage.getItem(SLOT));
+    if (!hasPose(saved) || saved.version !== VERSION && saved.version !== 1 || typeof saved.seed !== 'string' || !saved.seed.length || saved.seed.length > 128) return null;
+    const story = decodeStory(saved.version === VERSION ? saved.story : null, count(saved.mission, 0, MISSIONS.length));
+    const x = coordinate(saved.x, 0), z = coordinate(saved.z, 0);
+    return { version: VERSION, seed: saved.seed, x, z, heading: saved.heading, story, mission: story.index,
+      cash: number(saved.cash, PLAYER.cash, 1e9), reputation: number(saved.reputation, reputation[story.index], 1e6), health: number(saved.health, 100, 100, 1), armour: number(saved.armour, 0, 100),
+      seconds: number(saved.seconds, 0, 1e9), district: Object.hasOwn(DISTRICTS, saved.district) ? saved.district : 'palma',
+      wanted: saved.wanted ? { heat: number(saved.wanted.heat, 0, 100), x: coordinate(saved.wanted.x, x), z: coordinate(saved.wanted.z, z) } : null,
+      ammo: saved.ammo ? { current: count(saved.ammo.current, 12, 12), reserve: count(saved.ammo.reserve, 72, 144) } : null };
   } catch { return null; }
 }
-
-export function writeSlot(city, player, progress, position = player.position, story = null, wanted = null, ammo = null) {
+export function writeSlot(city, player, progress, pose = player.position, story = null, wanted = null, ammo = null) {
   try {
-    localStorage.setItem(SLOT, JSON.stringify({ version: VERSION, seed: city.seed,
-      x: position.x, z: position.z, heading: player.heading, health: player.health, armour: player.armour,
-      cash: player.cash, reputation: player.reputation, mission: story?.index ?? progress.mission,
-      completedMissions: story?.completed || [], story, seconds: progress.seconds,
-      district: city.districtAt(position.x, position.z),
-      wanted: wanted ? { heat: wanted.heat, x: wanted.x, z: wanted.z } : null,
-      ammo: ammo ? { current: ammo.current, reserve: ammo.reserve } : null,
-    }));
+    const { x, z } = pose;
+    localStorage.setItem(SLOT, JSON.stringify({ version: VERSION, seed: city.seed, x, z, heading: player.heading, health: player.health, armour: player.armour, cash: player.cash, reputation: player.reputation,
+      mission: story?.index ?? progress.mission, story, completedMissions: story?.completed ?? [], district: city.districtAt(x, z), seconds: progress.seconds,
+      wanted: wanted ? { x: wanted.x, z: wanted.z, heat: wanted.heat } : null, ammo: ammo ? { current: ammo.current, reserve: ammo.reserve } : null }));
     return true;
   } catch { return false; }
 }
-
-export function slotSummary(slot) {
-  if (!slot) return 'No local save';
-  const minutes = Math.floor(slot.seconds / 60);
-  return `${DISTRICTS[slot.district].name} · $${slot.cash.toLocaleString('en-US')} · ${slot.mission}/${MISSIONS.length} jobs · ${minutes}:${String(Math.floor(slot.seconds % 60)).padStart(2, '0')}`;
+export function slotSummary(saved) {
+  if (!saved) return 'No local save';
+  const seconds = Math.floor(saved.seconds), time = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  return `${DISTRICTS[saved.district].name} · $${saved.cash.toLocaleString('en-US')} · ${saved.mission}/${MISSIONS.length} jobs · ${time}`;
 }

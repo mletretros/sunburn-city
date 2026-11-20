@@ -20,7 +20,7 @@ assert.ok(game.length + 1 <= 993); assert.ok(bytes<=50331648);
 assert.ok(entries.every(e=>!e.name.startsWith('.'))); assert.ok(entries.length<=1000);
 const index = (await stat('out/game/index.html')).size, dossier = (await stat('out/dossier.json')).size;
 assert.ok(index<=1048576); assert.ok(dossier<=1572864);
-const kit = await readFile('/root/projects/bounty/makefun/gta6-01/kit/gta6-01-kit/starter/vendor/makefun-game.ts').catch(()=>null);
+const kit = await readFile('/root/projects/bounty/makefun/gta6-01/kit27/gta6-01-kit/starter/vendor/makefun-game.ts').catch(()=>null);
 const local = await readFile('vendor/makefun-game.ts');
 if (!kit) throw new Error('Locate kit helper before checking equality');
 assert.ok(local.equals(kit), 'Vendored kit helper modified');

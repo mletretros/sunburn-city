@@ -37,7 +37,7 @@ const fs = require('node:fs');
     });
     assert.ok(layout.objective.right < layout.vitals); assert.ok(layout.objective.bottom < 150); assert.ok(layout.markerInView);
     assert.deepEqual(layout.minimapBlipPixel, [255, 209, 140, 255]);
-    await page.screenshot({ path: 'tools/.cache/probe4.png' });
+    await page.screenshot({ path: 'tools/.cache/probe.png' });
     // Advance the actual sequential runtime API; the fixed-step loop updates all presentation.
     assert.equal(await page.evaluate(() => sunburn.missions.completeObjective('meet')), true);
     await page.click('#dialogue-skip');
@@ -149,7 +149,7 @@ const fs = require('node:fs');
     assert.equal(respawn.reputation, 10); assert.equal(respawn.wanted, 0); assert.equal(respawn.state, 'failed');
     assert.deepEqual(errors, []); assert.deepEqual(network, []);
     const evidence = { firstBrief, active, layout, secondStep, reward, restored, theft, destroyed, additional, fullChain, respawn,
-      probe: { path: 'tools/.cache/probe4.png', bytes: fs.statSync('tools/.cache/probe4.png').size, width: 768, height: 480 }, errors, externalRequests: network };
+      probe: { path: 'tools/.cache/probe.png', bytes: fs.statSync('tools/.cache/probe.png').size, width: 768, height: 480 }, errors, externalRequests: network };
     fs.writeFileSync('tools/.cache/probe4.json', JSON.stringify(evidence, null, 2));
     console.log(JSON.stringify(evidence, null, 2));
   } catch (error) {

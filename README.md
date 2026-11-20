@@ -1,90 +1,83 @@
 # sunburn-city
-
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/mletretros/sunburn-city/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/mletretros/sunburn-city/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Sunburn City is an offline, third-person open-world crime game set on a pastel coastal grid. Courier Marisol “Mars” Vega takes a waterfront job from fixer Duke Salazar and gets pulled into the Chrome Serpents’ payroll racket. Explore five districts on foot or steal one of six vehicle models, weave through traffic, meet pedestrians, evade the Civic Guard, and carry an eight-job story through to its broadcast finale.
-
-The city, storefront textures, palms, characters, vehicles, effects, and synthesised audio are generated locally. The game includes collision-aware driving and walking, drifting, combat and reloads, escalating police pursuits and searches, mission markers, radio dialogue, rewards, a live minimap, quality settings, and a browser-local save slot. No network services or runtime downloads are needed.
+A procedural coastal crime game starring courier Marisol “Mars” Vega. Cross five districts on foot or in six vehicle types, take eight jobs from fixer Duke Salazar, and expose the Chrome Serpents’ dockside racket. Traffic obeys signals, pedestrians react to danger, and Civic Guard units pursue, search, and dismount.
 
 ## Quick Start
 
-Use Node.js 22 or newer from the repository root:
+Use Node 22.18 or newer at the repository root:
 
 ```sh
 node serve.ts --port 8123
 ```
 
-Open http://localhost:8123, choose **New Game**, and accept Duke’s call. Click the world to capture the mouse and unlock audio. **P** opens the pause menu, job list, and save/load controls. **Continue** restores the local save; saves belong to the current browser and origin.
+Open http://localhost:8123 in desktop Chrome. Select **New Game** and advance Duke’s brief, or choose **Skip / accept job**. Click the world to look with the mouse and unlock synthesised audio. All libraries, textures, scenery and sound are local or generated; the game makes no external runtime requests.
 
 ## Controls
 
-| Input | Action |
+| Key | Action |
 | --- | --- |
-| WASD / arrow keys | Walk or drive; S brakes and reverses |
-| Mouse | Look |
-| Shift | Sprint on foot |
+| WASD / arrows | Walk or drive; back brakes then reverses |
+| Mouse | Look while pointer is captured |
+| Shift | Sprint |
 | Space | Jump on foot; handbrake in a vehicle |
-| E | Enter, take, or exit a nearby vehicle; slow down before exiting |
+| E | Enter or exit a parked / slow vehicle |
 | H | Horn |
-| Right mouse / left mouse | Aim / fire on foot |
+| Right mouse | Aim |
+| Left mouse / F | Fire |
 | R | Reload |
-| M | Expand minimap |
-| P | Pause / resume; jobs, save, load, restart, settings |
-| Escape | Release mouse |
+| M | Expand the minimap |
+| P / Escape | Pause; Escape also releases the pointer |
 | Enter / Space | Reveal or advance dialogue |
-| Q | Skip dialogue / accept offered job |
+| Q | Skip the current conversation and accept an offer |
+
+Pause → **Jobs** lists the story and retries failed jobs. Pause → **Save** stores a version-2 browser slot. **Continue** restores the mission and objective, cash, reputation, health, armour, ammunition and heat. Version-1 saves migrate on read. Death returns Mars to the Palma clinic, clears pursuit and charges up to $60.
 
 ## Mission chain
 
-| Job | Objective |
-| --- | --- |
-| Salt in the Envelope | Meet Duke’s contact, collect an envelope, and deliver it to his street office. |
-| Borrowed Sunshine | Steal the specific gold Sirocco RS and deliver it intact before the gate shuts. |
-| Quiet Frequency | Collect a Neon Row radio key quietly, lose the police, and reach the dead drop. |
-| Cold Manifest | Recover the Dockside manifest and beat the shift change. |
-| Cut the Rattle | Stop Coil at the freight crossing and recover the vault key. |
-| Payroll at High Tide | Steal the marked payroll van and take it to Coral Heights under pursuit. |
-| Glass Rain | Reach the decoy exchange, survive the Serpent ambush, and escape Neon Row. |
-| Open Circuit | Collect the uncut ledger, broadcast it from the Causeway, and lose the police. |
+| Mission | Goal | Cash / reputation |
+| --- | --- | --- |
+| Salt in the Envelope | Meet the contact and deliver Duke’s envelope | $350 / 10 REP |
+| Borrowed Sunshine | Steal the gold Sirocco RS and deliver it intact | $650 / 15 REP |
+| Quiet Frequency | Collect the radio key quietly, then lose the Guard | $800 / 20 REP |
+| Cold Manifest | Retrieve and relay the Dockside manifest | $1,100 / 25 REP |
+| Cut the Rattle | Defeat Coil and collect the vault key | $1,400 / 30 REP |
+| Payroll at High Tide | Steal and deliver the payroll van | $2,200 / 40 REP |
+| Glass Rain | Hold the relay for thirty seconds and escape | $1,800 / 40 REP |
+| Open Circuit | Broadcast the uncut ledger and reach safety | $4,000 / 70 REP |
 
-Jobs unlock in order through reputation and completion. Pause → Jobs shows progress and offers retries. Destroying a required vehicle, exceeding a stealth limit, abandoning the relay, running out of time, or going down can fail a job. The street clinic restores Mars for a cash fee.
+Jobs unlock in order and require the reputation earned by preceding jobs. Timed deliveries, destroyed mission vehicles, excessive heat, death and leaving the ambush area can fail a job.
 
 ## Module map
 
-| Path | Responsibility |
+| Module | Purpose |
 | --- | --- |
-| `game/index.html` | Canvas, import map, HUD, start and pause menus, responsive presentation |
-| `game/src/main.js` | World assembly, fixed-step simulation, rendering, shared HUD updates |
-| `game/src/config.js`, `rng.js` | World dimensions, tuning, palettes, seeded random streams |
-| `game/src/world/` | City grid, terrain, buildings, props, procedural textures, street graph, signals, sky, batching |
-| `game/src/entities/` | Player, six vehicle types, traffic, pedestrians, police, projectiles |
-| `game/src/systems/` | Collision physics, follow camera, wanted system, mission runtime, story data, save validation |
-| `game/src/ui/` | HUD setters, minimap, menus, typed radio dialogue |
-| `game/src/render/effects.js` | Pooled smoke, impacts, skid marks, explosions, dust |
-| `game/src/audio.js`, `input.js` | Web Audio synthesis and keyboard/mouse input |
-| `game/src/shots.js` | Seeded cover, foot, chase, and brief scenarios through real simulation APIs |
-| `game/vendor/three/` | Offline Three.js ES modules and upstream licence |
-| `tools/capture.mjs`, `shots.json` | Chrome captures and cover-first screenshot manifest |
-| `serve.ts` | Local static server for game/ |
-| `main.ts` | Deterministic output copy and source dossier generation |
-| `vendor/makefun-game.ts` | Unmodified submission kit dossier builder |
+| `game/index.html` | Responsive HUD, menus and local Three.js import map |
+| `game/src/main.js` | Startup, 60 Hz simulation, rendering and integration |
+| `game/src/config.js`, `rng.js` | Shared tuning and independent seeded streams |
+| `game/src/input.js`, `audio.js` | Input edges, pointer lock and Web Audio synthesis |
+| `game/src/world/` | Seeded city graph, coast, architecture, props, lights and sky |
+| `game/src/entities/` | Player, vehicles, traffic, pedestrians, police and weapons |
+| `game/src/systems/` | Collision, camera, wanted levels, story runtime and saves |
+| `game/src/ui/` | HUD setters, minimap atlas, menus, portraits and dialogue |
+| `game/src/render/effects.js` | Fixed-size smoke, skid, tracer and particle pools |
+| `game/src/shots.js`, `shots.json` | Four seeded scenarios using real gameplay paths |
+| `tools/capture.mjs` | Chrome capture, scenario assertions and JPEG validation |
+| `main.ts` | Deterministic static payload and kit dossier generation |
 
-## Captures and submission build
-
-The four scenarios use `?shot=cover&seed=97`, `?shot=foot&seed=97`, `?shot=chase&seed=97`, and `?shot=brief&seed=97`. Each builds the seeded city, advances fixed simulation steps, renders three frames, and freezes with `window.__shotReady` set. Normal play without a screenshot query retains the start and pause menus.
+## Reproduce the submission
 
 ```sh
 NODE_PATH=/root/fp-test/node_modules node tools/capture.mjs
-mkdir -p out
 MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-The capture script uses the provisioned Puppeteer and Chrome, starts a local server if needed, blocks external requests, and writes four complete 1280×720 JPEGs under 256 KiB each. The entrypoint copies public game files and screenshots and generates `dossier.json` with the kit’s exact caps. No build or package installation is needed to play.
+The `cover`, `foot`, `chase` and `brief` scenarios are selected with `?shot=cover&seed=97` (replace the scenario name as needed). Each advances a fixed number of fixed steps, renders three frames and freezes before setting `window.__shotReady`. Screenshots are real 1280×720 renders, JPEG-encoded below 256 KiB. `main.ts` copies the static game and screenshots and invokes the unchanged `vendor/makefun-game.ts` helper with the kit’s exact caps.
 
 ## Licence
 
-Original game code and generated art are released under the MIT licence; see [LICENSE](LICENSE). Vendored Three.js retains its upstream MIT licence in `game/vendor/three/LICENSE`. The vendored submission helper retains its kit attribution and is kept byte for byte identical to the kit copy.
+Game source and generated artwork use the [MIT licence](LICENSE). Three.js retains its vendored [MIT licence](game/vendor/three/LICENSE).
 
 <sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>

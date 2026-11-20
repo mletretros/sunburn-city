@@ -1,6 +1,6 @@
 [
-  { "name": "1-cover.jpg", "query": "?shot=cover&seed=97" },
-  { "name": "2-foot.jpg", "query": "?shot=foot&seed=97" },
-  { "name": "3-chase.jpg", "query": "?shot=chase&seed=97" },
-  { "name": "4-brief.jpg", "query": "?shot=brief&seed=97" }
+  { "scenario": "cover", "name": "1-cover.jpg", "query": "?shot=cover&seed=97", "description": "Gold Sirocco delivery through Neon Row, street life, one wanted star and active navigation." },
+  { "scenario": "foot", "name": "2-foot.jpg", "query": "?shot=foot&seed=97", "description": "Mars on Palma Strip near pedestrians, shops and a parked car entry prompt." },
+  { "scenario": "chase", "name": "3-chase.jpg", "query": "?shot=chase&seed=97", "description": "Four-star cruiser pursuit with a handbrake drift, smoke and police blips." },
+  { "scenario": "brief", "name": "4-brief.jpg", "query": "?shot=brief&seed=97", "description": "Duke calls about the envelope while its objective and world marker remain visible." }
 ]

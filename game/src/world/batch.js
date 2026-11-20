@@ -1,39 +1,34 @@
-import * as THREE from 'three';
-
-// Spatial batches let the camera and shadow frusta skip whole parts of the city.
+import { BoxGeometry, Color, CylinderGeometry, InstancedMesh, MeshStandardMaterial, Object3D, Quaternion, Vector3 } from 'three';
 export function createBatches(scene) {
-  const paint = new THREE.MeshStandardMaterial({ roughness: .82 });
-  const box = new THREE.BoxGeometry();
-  const cylinder = new THREE.CylinderGeometry(.5, .5, 1, 8);
-  const up = new THREE.Vector3(0, 1, 0), delta = new THREE.Vector3();
-  const buckets = new Map(), pose = new THREE.Object3D(), tint = new THREE.Color();
-  function put(geometry, material, color, x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0, shadow = true) {
-    const sector = Math.max(sx, sy, sz) > 120 ? 'wide' : `${Math.floor(x / 116)},${Math.floor(z / 116)}`;
-    const key = `${geometry.id}:${material.id}:${shadow}:${sector}`;
-    if (!buckets.has(key)) buckets.set(key, { geometry, material, shadow, entries: [] });
-    pose.position.set(x, y, z); pose.scale.set(sx, sy, sz);
-    if (typeof rx === 'number') pose.rotation.set(rx, ry, rz);
-    else pose.quaternion.copy(rx);
-    pose.updateMatrix();
-    buckets.get(key).entries.push([pose.matrix.clone(), tint.set(color).clone()]);
+  const paint = new MeshStandardMaterial({ roughness: .82 });
+  const boxGeometry = new BoxGeometry(), cylinder = new CylinderGeometry(.5, .5, 1, 8);
+  const groups = new Map(), pose = new Object3D(), rotation = new Quaternion();
+  const up = new Vector3(0, 1, 0), direction = new Vector3();
+  function put(geometry, material, tint, x, y, z, w, h, d, pitch = 0, yaw = 0, roll = 0, casts = true) {
+    const tile = Math.max(w, h, d) > 120 ? 'wide' : `${Math.floor(x / 116)},${Math.floor(z / 116)}`;
+    const key = `${geometry.id}/${material.id}/${casts}/${tile}`;
+    let group = groups.get(key);
+    if (!group) { group = { geometry, material, casts, matrices: [], colors: [] }; groups.set(key, group); }
+    pose.position.set(x, y, z); pose.scale.set(w, h, d);
+    if (typeof pitch === 'number') pose.rotation.set(pitch, yaw, roll); else pose.quaternion.copy(pitch);
+    pose.updateMatrix(); group.matrices.push(pose.matrix.clone()); group.colors.push(new Color(tint));
   }
+  const box = (tint, x, y, z, w, h, d, yaw = 0, casts = true) => put(boxGeometry, paint, tint, x, y, z, w, h, d, 0, yaw, 0, casts);
   return {
-    put, paint, boxGeometry: box,
-    box: (c, x, y, z, w, h, d, ry = 0, shadow = true) => put(box, paint, c, x, y, z, w, h, d, 0, ry, 0, shadow),
-    beam(c, x, y, z, bx, by, bz, width) {
-      delta.set(bx - x, by - y, bz - z);
-      const length = delta.length();
-      const rotation = pose.quaternion.setFromUnitVectors(up, delta.divideScalar(length));
-      put(cylinder, paint, c, (x + bx) / 2, (y + by) / 2, (z + bz) / 2, width, length, width, rotation);
+    paint, boxGeometry, put, box,
+    beam(tint, ax, ay, az, bx, by, bz, width) {
+      direction.set(bx - ax, by - ay, bz - az); const length = direction.length();
+      if (length <= 1e-8) return;
+      rotation.setFromUnitVectors(up, direction.multiplyScalar(1 / length));
+      put(cylinder, paint, tint, (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, width, length, width, rotation);
     },
     finish() {
-      for (const { geometry, material, shadow, entries } of buckets.values()) {
-        const mesh = new THREE.InstancedMesh(geometry, material, entries.length);
-        entries.forEach(([matrix, color], i) => { mesh.setMatrixAt(i, matrix); mesh.setColorAt(i, color); });
-        mesh.castShadow = shadow; mesh.receiveShadow = true;
-        mesh.computeBoundingSphere(); scene.add(mesh);
+      for (const group of groups.values()) {
+        const mesh = new InstancedMesh(group.geometry, group.material, group.matrices.length);
+        for (let i = 0; i < group.matrices.length; i++) { mesh.setMatrixAt(i, group.matrices[i]); mesh.setColorAt(i, group.colors[i]); }
+        mesh.castShadow = group.casts; mesh.receiveShadow = true; mesh.computeBoundingSphere(); scene.add(mesh);
       }
-      buckets.clear();
+      groups.clear();
     },
   };
 }

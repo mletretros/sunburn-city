@@ -1,38 +1,32 @@
-import * as THREE from 'three';
-import { PALETTE, WORLD } from '../config.js';
+import { BoxGeometry, Color, InstancedMesh, MeshBasicMaterial, Object3D } from 'three';
+import { WORLD, PALETTE } from '../config.js';
 import { signalPhase } from './streets.js';
-
-export function buildSignals(scene, city, batch) {
-  const lamps = new THREE.InstancedMesh(new THREE.BoxGeometry(.16, .16, .055), new THREE.MeshBasicMaterial(), city.intersections.length * 12);
-  const pose = new THREE.Object3D(), color = new THREE.Color();
-  const previous = new Int8Array(city.intersections.length).fill(-2);
-  const red = 0xff554d, green = 0x68ffbe, amber = 0xffba50, dark = 0x44404b;
-  const edge = WORLD.road / 2 + .53;
-  for (const j of city.intersections) for (let face = 0; face < 4; face++) {
-    const sx = face < 2 ? (face ? -1 : 1) : (face === 2 ? -1 : 1);
-    const sz = face < 2 ? (face ? 1 : -1) : (face === 2 ? -1 : 1);
-    const x = j.x + sx * edge, z = j.z + sz * edge;
-    const fx = face < 2 ? sx : 0, fz = face >= 2 ? sz : 0;
-    const heading = Math.atan2(fx, fz);
-    batch.beam(PALETTE.iron, x, .14, z, x, 4.56, z, .16);
-    batch.box(PALETTE.iron, x + fx * .13, 4.02, z + fz * .13, .34, .94, .22, heading);
-    for (let lamp = 0; lamp < 3; lamp++) {
-      pose.position.set(x + fx * .245, 4.32 - lamp * .30, z + fz * .245);
-      pose.rotation.y = heading; pose.updateMatrix(); lamps.setMatrixAt(j.id * 12 + face * 3 + lamp, pose.matrix);
+const approaches = [[1, -1, 1, 0], [-1, 1, -1, 0], [-1, -1, 0, -1], [1, 1, 0, 1]];
+export function buildSignals(scene, { intersections }, structures) {
+  const lamps = new InstancedMesh(new BoxGeometry(.16, .16, .055), new MeshBasicMaterial(), intersections.length * 12);
+  const pose = new Object3D(), offset = WORLD.road / 2 + .53, phases = new Int8Array(intersections.length).fill(-2);
+  const dark = new Color(0x44404b), red = new Color(0xff554d), amber = new Color(0xffba50), green = new Color(0x68ffbe);
+  for (const junction of intersections) {
+    let index = junction.id * 12;
+    for (const [dx, dz, nx, nz] of approaches) {
+      const x = junction.x + dx * offset, z = junction.z + dz * offset, yaw = Math.atan2(nx, nz);
+      structures.beam(PALETTE.iron, x, .14, z, x, 4.56, z, .16);
+      structures.box(PALETTE.iron, x + nx * .13, 4.02, z + nz * .13, .34, .94, .22, yaw); pose.rotation.y = yaw;
+      for (let lamp = 0; lamp < 3; lamp++) {
+        pose.position.set(x + nx * .245, 4.32 - lamp * .3, z + nz * .245); pose.updateMatrix(); lamps.setMatrixAt(index, pose.matrix); lamps.setColorAt(index++, dark);
+      }
     }
   }
-  scene.add(lamps);
+  lamps.computeBoundingSphere(); scene.add(lamps);
   return seconds => {
     let changed = false;
-    for (const j of city.intersections) {
-      const phase = signalPhase(j, seconds);
-      if (previous[j.id] === phase) continue;
-      previous[j.id] = phase; changed = true;
-      for (let face = 0; face < 4; face++) {
-        const go = phase === Number(face >= 2), index = j.id * 12 + face * 3;
-        lamps.setColorAt(index, color.set(go ? dark : red));
-        lamps.setColorAt(index + 1, color.set(phase === -1 ? amber : dark));
-        lamps.setColorAt(index + 2, color.set(go ? green : dark));
+    for (let i = 0; i < intersections.length; i++) {
+      const junction = intersections[i], phase = signalPhase(junction, seconds);
+      if (phases[junction.id] === phase) continue;
+      phases[junction.id] = phase; changed = true; let index = junction.id * 12;
+      for (let head = 0; head < 4; head++) {
+        const open = phase === (head >> 1);
+        lamps.setColorAt(index++, open ? dark : red); lamps.setColorAt(index++, phase === -1 ? amber : dark); lamps.setColorAt(index++, open ? green : dark);
       }
     }
     if (changed) lamps.instanceColor.needsUpdate = true;

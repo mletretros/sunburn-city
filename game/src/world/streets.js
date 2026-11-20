@@ -1,47 +1,35 @@
-import { STREET_LIFE as S, WORLD as W } from '../config.js';
-
-export function signalPhase(junction, seconds) {
-  const span = S.green + S.allRed;
-  const t = (seconds + junction.id * 2.7) % (span * 2);
-  if (t < S.green) return 0; // East/west.
-  if (t >= span && t < span + S.green) return 1; // North/south.
-  return -1;
+import { WORLD, STREET_LIFE as S } from '../config.js';
+const halfCycle = S.green + S.allRed, cycle = halfCycle * 2;
+export function signalPhase({ id }, elapsed) {
+  const tick = ((elapsed + id * 2.7) % cycle + cycle) % cycle;
+  if (tick < halfCycle) return tick < S.green ? 0 : -1;
+  return tick < halfCycle + S.green ? 1 : -1;
 }
-
-// Each junction has a walking node in each corner. Edges join the sides of blocks
-// and cross the street at the painted stripes, never through the intersection center.
-export function createSidewalkGraph(city) {
-  const nodes = [], edges = [], inset = W.road * .5 + S.sidewalkInset;
-  const corner = (id, sx, sz) => id * 4 + Number(sx > 0) + 2 * Number(sz > 0);
-  function connect(a, b, junction = null, axis = -1) {
-    const from = nodes[a], to = nodes[b];
-    const length = Math.hypot(to.x - from.x, to.z - from.z);
-    const edge = { id: edges.length, from, to, length, junction, axis };
-    edges.push(edge); from.links.push(edge); to.links.push(edge);
+export function createSidewalkGraph({ intersections, roads, south, east }) {
+  const nodes = [], edges = [], sidewalks = [], corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+  const inset = WORLD.road / 2 + S.sidewalkInset, at = (id, corner) => nodes[id * 4 + corner];
+  function connect(from, to, junction = null, axis = -1) {
+    const edge = { id: edges.length, from, to, junction, axis, length: Math.hypot(from.x - to.x, from.z - to.z) };
+    from.links.push(edge); to.links.push(edge); edges.push(edge); if (!junction) sidewalks.push(edge);
   }
-  for (const j of city.intersections) for (const sz of [-1, 1]) for (const sx of [-1, 1]) {
-    nodes.push({ x: j.x + sx * inset, z: j.z + sz * inset, links: [] });
+  for (const junction of intersections) for (const [x, z] of corners) nodes.push({ x: junction.x + x * inset, z: junction.z + z * inset, links: [] });
+  for (const junction of intersections) {
+    const { id, x, z } = junction;
+    if (z > WORLD.north) connect(at(id, 0), at(id, 1), junction, 0);
+    if (z < south) connect(at(id, 2), at(id, 3), junction, 0);
+    if (x > 0) connect(at(id, 0), at(id, 2), junction, 1);
+    if (x < east) connect(at(id, 1), at(id, 3), junction, 1);
   }
-  for (const j of city.intersections) {
-    if (j.z > W.north) connect(corner(j.id, -1, -1), corner(j.id, 1, -1), j, 0);
-    if (j.z < city.south) connect(corner(j.id, -1, 1), corner(j.id, 1, 1), j, 0);
-    if (j.x > 0) connect(corner(j.id, -1, -1), corner(j.id, -1, 1), j, 1);
-    if (j.x < city.east) connect(corner(j.id, 1, -1), corner(j.id, 1, 1), j, 1);
+  for (const road of roads) {
+    if (road.ax === road.bx) { connect(at(road.from, 2), at(road.to, 0)); connect(at(road.from, 3), at(road.to, 1)); }
+    else { connect(at(road.from, 1), at(road.to, 0)); connect(at(road.from, 3), at(road.to, 2)); }
   }
-  for (const road of city.roads) {
-    for (const side of [-1, 1]) {
-      if (road.ax === road.bx) connect(corner(road.from, side, 1), corner(road.to, side, -1));
-      else connect(corner(road.from, 1, side), corner(road.to, -1, side));
-    }
-  }
-  return { nodes, edges, sidewalks: edges.filter(edge => !edge.junction) };
+  return { nodes, edges, sidewalks };
 }
-
 export function canRecycle(camera, x, z, focus, far, near = S.near) {
-  const dx = x - focus.x, dz = z - focus.z, d2 = dx * dx + dz * dz;
-  if (d2 > far * far) return true;
-  if (d2 < near * near) return false;
-  // Camera's backward basis is matrix column 2. Require objects to be well behind it.
+  const distance = (focus.x - x) ** 2 + (focus.z - z) ** 2;
+  if (distance > far * far) return true;
+  if (distance < near * near) return false;
   const m = camera.matrixWorld.elements;
   return (x - m[12]) * m[8] + (z - m[14]) * m[10] > 12;
 }

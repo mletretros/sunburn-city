@@ -3,212 +3,101 @@ import { STREET_LIFE as S } from '../config.js';
 import { makeRng } from '../rng.js';
 import { circleVsFootprint } from '../systems/physics.js';
 import { createSidewalkGraph, signalPhase, canRecycle } from '../world/streets.js';
-
-const shirts = [0xfc856a, 0x36a799, 0xffc057, 0x9e79ab, 0xd3e0cb, 0x538fc4, 0xe25a7d];
-const pants = [0x293b54, 0x596e70, 0xebc4a7, 0x6b5360];
-const skin = [0xa46044, 0xe2ac7f, 0x784538, 0xc18464, 0xecb69b];
-
+const shirts = [0xfc856a, 0x36a799, 0xffc057, 0x9e79ab, 0xd3e0cb, 0x538fc4, 0xe25a7d], trousers = [0x293b54, 0x596e70, 0xebc4a7, 0x6b5360];
+const skins = [0xa46044, 0xe2ac7f, 0x784538, 0xc18464, 0xecb69b], hair = [0x2d2530, 0x46302d, 0x835742, 0xd2ab6d], TAU = Math.PI * 2;
 export function createPedestrians(scene, city, physics) {
-  const graph = createSidewalkGraph(city), walkers = [];
-  let rng = makeRng(`${city.seed}:walkers`), scan = 0, driverIndex = 0;
-  const threat = { x: 0, z: 0, time: 0 };
-  const mat = new THREE.MeshStandardMaterial({ roughness: .86 });
-  const trunk = new THREE.CylinderGeometry(.73, 1, 1, 6), cube = new THREE.BoxGeometry();
-  const head = new THREE.IcosahedronGeometry(1, 1);
-  const count = S.walkers + S.driverPool;
-  const body = new THREE.InstancedMesh(trunk, mat, count);
-  const faces = new THREE.InstancedMesh(head, mat, count * 2);
-  const limbs = new THREE.InstancedMesh(cube, mat, count * 4);
-  for (const mesh of [body, faces, limbs]) {
-    mesh.frustumCulled = false; mesh.castShadow = true;
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(mesh);
-  }
-  const anchor = new THREE.Object3D(), part = new THREE.Object3D(), matrix = new THREE.Matrix4(), tint = new THREE.Color();
-  const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
-  const palette = makeRng(`${city.seed}:clothes`);
+  const graph = createSidewalkGraph(city), walkers = [], count = S.walkers + S.driverPool, material = new THREE.MeshStandardMaterial({ roughness: .86 });
+  const torsos = new THREE.InstancedMesh(new THREE.CylinderGeometry(.73, 1, 1, 6), material, count), heads = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), material, count * 2), limbs = new THREE.InstancedMesh(new THREE.BoxGeometry(), material, count * 4);
+  for (const mesh of [torsos, heads, limbs]) { mesh.frustumCulled = false; mesh.castShadow = true; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(mesh); }
+  const base = new THREE.Object3D(), part = new THREE.Object3D(), matrix = new THREE.Matrix4(), color = new THREE.Color(), hidden = new THREE.Matrix4().makeScale(0, 0, 0), clothes = makeRng(`${city.seed}:clothes`);
   for (let id = 0; id < count; id++) {
-    const person = { id, position: new THREE.Vector3(), heading: 0, phase: 0, stride: 0,
-      height: palette.range(.87, 1.14), width: palette.range(.82, 1.18), speed: 0, active: false,
-      edge: null, from: null, to: null, mode: 'walk', flee: 0, down: 0, noticed: false,
-      awayX: 0, awayZ: 0, blocked: 0, generation: 0, health: 100 };
-    walkers.push(person);
-    body.setColorAt(id, tint.set(palette.pick(shirts)));
-    const complexion = palette.pick(skin), trousers = palette.pick(pants);
-    faces.setColorAt(id * 2, tint.set(complexion)); faces.setColorAt(id * 2 + 1, tint.set(palette.pick([0x2d2530, 0x46302d, 0x835742, 0xd2ab6d])));
-    for (let i = 0; i < 4; i++) limbs.setColorAt(id * 4 + i, tint.set(i < 2 ? trousers : complexion));
+    walkers.push({ id, position: new THREE.Vector3(), heading: 0, phase: 0, stride: 0, height: clothes.range(.87, 1.14), width: clothes.range(.82, 1.18), speed: 0, active: false,
+      edge: null, from: null, to: null, mode: 'walk', flee: 0, down: 0, noticed: false, awayX: 0, awayZ: 0, blocked: 0, generation: 0, health: 100 });
+    torsos.setColorAt(id, color.set(clothes.pick(shirts))); const skin = clothes.pick(skins), pants = clothes.pick(trousers);
+    heads.setColorAt(id * 2, color.set(skin)); heads.setColorAt(id * 2 + 1, color.set(clothes.pick(hair)));
+    for (let i = 0; i < 4; i++) limbs.setColorAt(id * 4 + i, color.set(i < 2 ? pants : skin));
   }
-  function put(mesh, index, x, y, z, w, h, d, swing = 0) {
-    part.position.set(x, y, z); part.scale.set(w, h, d); part.rotation.set(swing, 0, 0);
-    part.updateMatrix(); mesh.setMatrixAt(index, matrix.multiplyMatrices(anchor.matrix, part.matrix));
+  const threat = { x: 0, z: 0, time: 0 }; let random = makeRng(`${city.seed}:walkers`), scan = 0, nextDriver = 0;
+  function put(mesh, index, x, y, z, width, height, depth, swing = 0) {
+    part.position.set(x, y, z); part.scale.set(width, height, depth); part.rotation.set(swing, 0, 0); part.updateMatrix(); mesh.setMatrixAt(index, matrix.multiplyMatrices(base.matrix, part.matrix));
   }
-  function drawPerson(p) {
-    const { id, position } = p;
-    if (!p.active) {
-      body.setMatrixAt(id, hidden);
-      for (let i = 0; i < 2; i++) faces.setMatrixAt(id * 2 + i, hidden);
-      for (let i = 0; i < 4; i++) limbs.setMatrixAt(id * 4 + i, hidden);
-      return;
-    }
-    const sway = Math.sin(p.phase) * p.stride, prone = p.mode === 'down';
-    anchor.position.copy(position);
-    anchor.position.y += prone ? .24 : .035 * Math.abs(sway);
-    anchor.rotation.set(prone ? -Math.PI / 2 : p.mode === 'flee' ? -.18 : 0, -p.heading, 0, 'YXZ');
-    anchor.scale.set(p.width, p.height, p.width); anchor.updateMatrix();
-    put(body, id, 0, 1.08, 0, .223, .55, .137, Math.PI);
-    put(faces, id * 2, 0, 1.53, 0, .123, .157, .119);
-    put(faces, id * 2 + 1, 0, 1.599, .024, .127, .105, .115);
-    for (let i = 0; i < 2; i++) {
-      const side = i ? 1 : -1, swing = side * sway;
-      put(limbs, id * 4 + i, side * .108, .43, -swing * .24, .157, .85, .18, -swing * .73);
-      put(limbs, id * 4 + i + 2, side * .245, 1.00, swing * .19, .107, .55, .117, swing * .8);
-    }
+  function draw(person) {
+    const { id, position, active } = person;
+    if (!active) { torsos.setMatrixAt(id, hidden); for (let i = 0; i < 2; i++) heads.setMatrixAt(id * 2 + i, hidden); for (let i = 0; i < 4; i++) limbs.setMatrixAt(id * 4 + i, hidden); return; }
+    const sway = Math.sin(person.phase) * person.stride, prone = person.mode === 'down'; base.position.copy(position); base.position.y += prone ? .24 : .035 * Math.abs(sway);
+    base.rotation.set(prone ? -Math.PI / 2 : person.mode === 'flee' ? -.18 : 0, -person.heading, 0, 'YXZ'); base.scale.set(person.width, person.height, person.width); base.updateMatrix();
+    put(torsos, id, 0, 1.08, 0, .223, .55, .137, Math.PI); put(heads, id * 2, 0, 1.53, 0, .123, .157, .119); put(heads, id * 2 + 1, 0, 1.599, .024, .127, .105, .115);
+    for (let i = 0; i < 2; i++) { const side = i ? 1 : -1, swing = side * sway; put(limbs, id * 4 + i, side * .108, .43, -swing * .24, .157, .85, .18, -swing * .73); put(limbs, id * 4 + i + 2, side * .245, 1, swing * .19, .107, .55, .117, swing * .8); }
   }
-  function spawn(p, focus, camera, initial) {
-    const sides = graph.sidewalks, start = rng.int(0, sides.length - 1);
-    for (let i = 0; i < sides.length; i++) {
-      const e = sides[(start + i) % sides.length], t = rng.range(.1, .9);
-      const x = e.from.x + (e.to.x - e.from.x) * t, z = e.from.z + (e.to.z - e.from.z) * t;
-      const dist = Math.hypot(x - focus.x, z - focus.z), y = physics.groundAt(x, z);
-      if (dist < (initial ? 5 : S.near) || dist > (initial ? 125 : S.far + 12) ||
-        (!initial && !canRecycle(camera, x, z, focus, 135)) || physics.circleBlocked(x, y, z, .29)) continue;
-      const flip = rng.next() < .5;
-      p.position.set(x, y, z); p.edge = e; p.from = flip ? e.to : e.from; p.to = flip ? e.from : e.to;
-      p.heading = Math.atan2(p.to.x - x, z - p.to.z); p.speed = rng.range(...S.pedestrianSpeed);
-      p.active = true; p.mode = 'walk'; p.noticed = false; p.flee = p.down = p.blocked = p.stride = 0;
-      p.phase = rng.range(0, Math.PI * 2); p.generation++; p.health = 100;
-      return;
+  function render() { for (let i = 0; i < walkers.length; i++) draw(walkers[i]); torsos.instanceMatrix.needsUpdate = heads.instanceMatrix.needsUpdate = limbs.instanceMatrix.needsUpdate = true; }
+  function spawn(person, focus, camera, initial) {
+    const edges = graph.sidewalks, first = random.int(0, edges.length - 1);
+    for (let attempt = 0; attempt < edges.length; attempt++) {
+      const edge = edges[(first + attempt) % edges.length], t = random.range(.1, .9), x = edge.from.x + (edge.to.x - edge.from.x) * t, z = edge.from.z + (edge.to.z - edge.from.z) * t, distance = Math.hypot(x - focus.x, z - focus.z), y = physics.groundAt(x, z);
+      if (distance < (initial ? 5 : S.near) || distance > (initial ? 125 : S.far + 12)) continue;
+      if (!initial && !canRecycle(camera, x, z, focus, 135) || physics.circleBlocked(x, y, z, .29)) continue;
+      const reverse = random.next() < .5; person.position.set(x, y, z); person.edge = edge; person.from = reverse ? edge.to : edge.from; person.to = reverse ? edge.from : edge.to;
+      person.heading = Math.atan2(person.to.x - x, z - person.to.z); person.speed = random.range(...S.pedestrianSpeed); person.active = true; person.mode = 'walk'; person.noticed = false;
+      person.flee = person.down = person.blocked = person.stride = 0; person.phase = random.range(0, TAU); person.generation++; person.health = 100; return;
     }
-    p.active = false;
+    person.active = false;
   }
-  function chooseTurn(p) {
-    const node = p.to, links = node.links, start = rng.int(0, links.length - 1);
-    for (let i = 0; i < links.length; i++) {
-      const edge = links[(start + i) % links.length];
-      if (edge === p.edge && links.length > 1) continue;
-      p.edge = edge; p.from = node; p.to = edge.from === node ? edge.to : edge.from;
-      return;
-    }
+  function turn(person) {
+    const node = person.to, links = node.links, first = random.int(0, links.length - 1);
+    for (let i = 0; i < links.length; i++) { const edge = links[(first + i) % links.length]; if (edge === person.edge && links.length > 1) continue; person.edge = edge; person.from = node; person.to = edge.from === node ? edge.to : edge.from; return; }
   }
-  function nearestSidewalk(p) {
-    let best = Infinity, selected = null, bestX = 0, bestZ = 0;
-    for (const e of graph.sidewalks) {
-      const x = Math.max(Math.min(e.from.x, e.to.x), Math.min(Math.max(e.from.x, e.to.x), p.position.x));
-      const z = Math.max(Math.min(e.from.z, e.to.z), Math.min(Math.max(e.from.z, e.to.z), p.position.z));
-      const d = (x - p.position.x) ** 2 + (z - p.position.z) ** 2;
-      if (d < best) { best = d; selected = e; bestX = x; bestZ = z; }
+  function returnToPath(person) {
+    let best = Infinity, path = null, nearestX = 0, nearestZ = 0;
+    for (let i = 0; i < graph.sidewalks.length; i++) {
+      const edge = graph.sidewalks[i], x = Math.max(Math.min(edge.from.x, edge.to.x), Math.min(Math.max(edge.from.x, edge.to.x), person.position.x)), z = Math.max(Math.min(edge.from.z, edge.to.z), Math.min(Math.max(edge.from.z, edge.to.z), person.position.z)), distance = (x - person.position.x) ** 2 + (z - person.position.z) ** 2;
+      if (distance < best) { best = distance; path = edge; nearestX = x; nearestZ = z; }
     }
-    p.edge = selected; p.from = selected.from; p.to = selected.to; p.awayX = bestX; p.awayZ = bestZ; p.mode = 'return';
+    person.edge = path; person.from = path.from; person.to = path.to; person.awayX = nearestX; person.awayZ = nearestZ; person.mode = 'return';
   }
-  function startFlee(p, x, z, seconds) {
-    if (p.mode === 'down') return;
-    p.mode = 'flee'; p.flee = seconds; p.awayX = x; p.awayZ = z;
-  }
-  function updateWalker(p, dt, focus, playerCar, seconds, heat) {
-    const pos = p.position;
-    p.noticed = !playerCar && Math.hypot(pos.x - focus.x, pos.z - focus.z) < 3.5;
-    if (p.mode !== 'down' && playerCar && Math.abs(playerCar.speed) > 3 &&
-      circleVsFootprint(pos.x, pos.z, .28, playerCar.footprint)) {
-      p.mode = 'down'; p.down = 2.6; p.heading = playerCar.heading; p.stride = 0;
-      return 1;
+  function flee(person, x, z, duration) { if (person.mode !== 'down') { person.mode = 'flee'; person.flee = duration; person.awayX = x; person.awayZ = z; } }
+  function tick(person, dt, focus, car, seconds, heat) {
+    const p = person.position; person.noticed = !car && Math.hypot(p.x - focus.x, p.z - focus.z) < 3.5;
+    if (person.mode !== 'down' && car && Math.abs(car.speed) > 3 && circleVsFootprint(p.x, p.z, .28, car.footprint)) { person.mode = 'down'; person.down = 2.6; person.heading = car.heading; person.stride = 0; return 1; }
+    if (person.mode === 'down') { if (!person.health) return 0; person.stride = 0; person.down -= dt; if (person.down <= 0) { person.mode = 'walk'; const source = car?.position ?? focus; flee(person, source.x, source.z, 2); } return 0; }
+    if (threat.time > 0 && Math.hypot(p.x - threat.x, p.z - threat.z) < S.earshot) flee(person, threat.x, threat.z, 3);
+    if (heat >= 2 && Math.hypot(p.x - focus.x, p.z - focus.z) < 9 + heat * 2) flee(person, focus.x, focus.z, 2.2);
+    for (let i = 0; i < physics.vehicles.length; i++) {
+      const vehicle = physics.vehicles[i]; if (!vehicle.active || Math.abs(vehicle.speed) < S.carThreatSpeed) continue;
+      const x = p.x - vehicle.position.x, z = p.z - vehicle.position.z, shape = vehicle.footprint;
+      if (x * x + z * z >= S.fearRange ** 2 || Math.abs(x * shape.c + z * shape.s) > 2.6) continue;
+      if ((x * shape.s - z * shape.c) * Math.sign(vehicle.speed) > -1) flee(person, vehicle.position.x, vehicle.position.z, 1.8);
     }
-    if (p.mode === 'down') {
-      if (!p.health) return 0;
-      p.stride = 0; p.down -= dt;
-      if (p.down <= 0) startFleeAfterFall(p, playerCar, focus);
-      return 0;
+    let dx = 0, dz = 0, speed = person.speed;
+    if (person.mode === 'flee') { person.flee -= dt; if (person.flee <= 0) returnToPath(person); else { dx = p.x - person.awayX; dz = p.z - person.awayZ; speed = 4.15; } }
+    if (person.mode === 'return') { dx = person.awayX - p.x; dz = person.awayZ - p.z; if (Math.hypot(dx, dz) < .08) person.mode = 'walk'; }
+    if (person.mode === 'walk') {
+      dx = person.to.x - p.x; dz = person.to.z - p.z; if (Math.hypot(dx, dz) < .075) { turn(person); dx = person.to.x - p.x; dz = person.to.z - p.z; }
+      if (person.edge.junction && Math.hypot(person.from.x - p.x, person.from.z - p.z) < .18 && signalPhase(person.edge.junction, seconds) !== person.edge.axis) dx = dz = 0;
+      if (person.noticed) speed *= .64;
     }
-    if (threat.time > 0 && Math.hypot(pos.x - threat.x, pos.z - threat.z) < S.earshot) startFlee(p, threat.x, threat.z, 3);
-    if (heat >= 2 && Math.hypot(pos.x - focus.x, pos.z - focus.z) < 9 + heat * 2) startFlee(p, focus.x, focus.z, 2.2);
-    for (const car of physics.vehicles) {
-      if (!car.active || Math.abs(car.speed) < S.carThreatSpeed) continue;
-      const x = pos.x - car.position.x, z = pos.z - car.position.z;
-      if (x * x + z * z >= S.fearRange ** 2 || Math.abs(x * car.footprint.c + z * car.footprint.s) > 2.6) continue;
-      if ((x * car.footprint.s - z * car.footprint.c) * Math.sign(car.speed) > -1) startFlee(p, car.position.x, car.position.z, 1.8);
-    }
-    let dx = 0, dz = 0, speed = p.speed;
-    if (p.mode === 'flee') {
-      p.flee -= dt;
-      if (p.flee <= 0) nearestSidewalk(p);
-      else { dx = pos.x - p.awayX; dz = pos.z - p.awayZ; speed = 4.15; }
-    }
-    if (p.mode === 'return') {
-      dx = p.awayX - pos.x; dz = p.awayZ - pos.z;
-      if (Math.hypot(dx, dz) < .08) p.mode = 'walk';
-    }
-    if (p.mode === 'walk') {
-      dx = p.to.x - pos.x; dz = p.to.z - pos.z;
-      if (Math.hypot(dx, dz) < .075) { chooseTurn(p); dx = p.to.x - pos.x; dz = p.to.z - pos.z; }
-      if (p.edge.junction && Math.hypot(p.from.x - pos.x, p.from.z - pos.z) < .18 &&
-        signalPhase(p.edge.junction, seconds) !== p.edge.axis) { dx = dz = 0; }
-      if (p.noticed) speed *= .64;
-    }
-    const length = Math.hypot(dx, dz);
-    if (length > .001) {
-      const move = Math.min(length, dt * speed), heading = Math.atan2(dx, -dz), oldX = pos.x, oldZ = pos.z;
-      const bad = physics.stepCircle(pos, dx / length * move, dz / length * move, .27, 1.65);
-      const travel = Math.hypot(pos.x - oldX, pos.z - oldZ);
-      p.blocked = travel < move * .35 ? p.blocked + dt : 0;
-      if (bad && p.blocked > .6) {
-        p.blocked = 0;
-        if (p.mode === 'walk') { const tmp = p.from; p.from = p.to; p.to = tmp; }
-        if (p.mode === 'flee') { p.awayX = pos.x + dz; p.awayZ = pos.z - dx; }
-      }
-      p.heading += Math.atan2(Math.sin(heading - p.heading), Math.cos(heading - p.heading)) * Math.min(1, dt * 12);
-      p.phase = (p.phase + travel * 5.4) % (Math.PI * 2);
-      p.stride += (Math.min(1.2, travel / dt * .48) - p.stride) * Math.min(1, dt * 14);
-      pos.y = physics.groundAt(pos.x, pos.z);
-    } else p.stride *= 1 - dt * 9;
-    return 0;
-  }
-  function startFleeAfterFall(p, car, focus) {
-    p.mode = 'walk'; const away = car?.position ?? focus; startFlee(p, away.x, away.z, 2);
+    const length = Math.hypot(dx, dz); if (length <= .001) { person.stride *= Math.max(0, 1 - dt * 9); return 0; }
+    const movement = Math.min(length, dt * speed), heading = Math.atan2(dx, -dz), oldX = p.x, oldZ = p.z, blocked = physics.stepCircle(p, dx / length * movement, dz / length * movement, .27, 1.65), traveled = Math.hypot(p.x - oldX, p.z - oldZ);
+    person.blocked = traveled < movement * .35 ? person.blocked + dt : 0;
+    if (blocked && person.blocked > .6) { person.blocked = 0; if (person.mode === 'walk') { const old = person.from; person.from = person.to; person.to = old; } if (person.mode === 'flee') { person.awayX = p.x + dz; person.awayZ = p.z - dx; } }
+    const delta = heading - person.heading; person.heading += Math.atan2(Math.sin(delta), Math.cos(delta)) * Math.min(1, dt * 12); person.phase = (person.phase + traveled * 5.4) % TAU;
+    person.stride += (Math.min(1.2, traveled / dt * .48) - person.stride) * Math.min(1, dt * 14); p.y = physics.groundAt(p.x, p.z); return 0;
   }
   return {
-    graph, walkers,
-    reset(focus) {
-      rng = makeRng(`${city.seed}:walkers`); driverIndex = scan = threat.time = 0;
-      for (const p of walkers) {
-        p.generation = 0; p.active = false;
-        if (p.id < S.walkers) spawn(p, focus, null, true);
-      }
-      this.render();
-    },
+    graph, walkers, render,
+    reset(focus) { random = makeRng(`${city.seed}:walkers`); nextDriver = scan = threat.time = 0; for (const person of walkers) { person.generation = 0; person.active = false; person.health = 100; person.mode = 'walk'; person.noticed = false; person.flee = person.down = person.blocked = person.stride = 0; if (person.id < S.walkers) spawn(person, focus, null, true); } render(); },
     eject(car, driver, exitPoint) {
-      const p = walkers[S.walkers + driverIndex++ % S.driverPool];
-      const { position: pos } = car;
-      const sign = exitPoint ? -Math.sign((exitPoint.x - pos.x) * car.footprint.c + (exitPoint.z - pos.z) * car.footprint.s) : 1;
-      const gap = car.spec.width / 2 + .63;
-      let x = pos.x + sign * car.footprint.c * gap, z = pos.z + sign * car.footprint.s * gap;
-      if (physics.circleBlocked(x, physics.groundAt(x, z), z, .29)) {
-        x = exitPoint?.x ?? pos.x - sign * car.footprint.c * gap; z = exitPoint?.z ?? pos.z - sign * car.footprint.s * gap;
-      }
+      const person = walkers[S.walkers + nextDriver++ % S.driverPool], p = car.position, shape = car.footprint, sign = exitPoint ? -Math.sign((exitPoint.x - p.x) * shape.c + (exitPoint.z - p.z) * shape.s) : 1, gap = car.spec.width / 2 + .63;
+      let x = p.x + sign * shape.c * gap, z = p.z + sign * shape.s * gap;
+      if (physics.circleBlocked(x, physics.groundAt(x, z), z, .29)) { x = exitPoint?.x ?? p.x - sign * shape.c * gap; z = exitPoint?.z ?? p.z - sign * shape.s * gap; }
       if (physics.circleBlocked(x, physics.groundAt(x, z), z, .29)) return;
-      p.position.set(x, physics.groundAt(x, z), z); p.active = true; p.mode = 'walk'; p.generation++; p.health = 100;
-      p.speed = 1.55; p.blocked = 0; p.heading = car.heading; p.stride = p.phase = 0;
-      startFlee(p, pos.x, pos.z, 3.6);
+      person.position.set(x, physics.groundAt(x, z), z); person.active = true; person.mode = 'walk'; person.generation++; person.health = 100; person.speed = 1.55; person.blocked = 0; person.heading = car.heading; person.stride = person.phase = 0; flee(person, p.x, p.z, 3.6);
     },
     hearGunfire(x, z) { threat.x = x; threat.z = z; threat.time = .18; },
-    hit(p, damage, source) {
-      p.health = Math.max(0, p.health - damage);
-      if (!p.health) { p.mode = 'down'; p.stride = 0; return true; }
-      p.mode = 'walk'; startFlee(p, source.x, source.z, 3.4); return false;
-    },
-    update(dt, focus, camera, playerCar, seconds, heat = 0) {
-      threat.time = Math.max(0, threat.time - dt);
-      scan -= dt; let knocked = 0;
-      for (const p of walkers) {
-        if (scan <= 0 && (!p.active || canRecycle(camera, p.position.x, p.position.z, focus, 186, 143))) {
-          if (p.id < S.walkers) spawn(p, focus, camera, false);
-          else p.active = false;
-        }
-        if (p.active) knocked += updateWalker(p, dt, focus, playerCar, seconds, heat);
-      }
-      if (scan <= 0) scan = .70;
-      return knocked;
-    },
-    render() {
-      for (const person of walkers) drawPerson(person);
-      body.instanceMatrix.needsUpdate = faces.instanceMatrix.needsUpdate = limbs.instanceMatrix.needsUpdate = true;
+    hit(person, damage, source) { person.health = Math.max(0, person.health - damage); if (!person.health) { person.mode = 'down'; person.stride = 0; return true; } person.mode = 'walk'; flee(person, source.x, source.z, 3.4); return false; },
+    update(dt, focus, camera, car, seconds, heat = 0) {
+      threat.time = Math.max(0, threat.time - dt); scan -= dt; let knocked = 0;
+      for (let i = 0; i < walkers.length; i++) { const person = walkers[i]; if (scan <= 0 && (!person.active || canRecycle(camera, person.position.x, person.position.z, focus, 186, 143))) { if (person.id < S.walkers) spawn(person, focus, camera, false); else person.active = false; } if (person.active) knocked += tick(person, dt, focus, car, seconds, heat); }
+      if (scan <= 0) scan = .7; return knocked;
     },
   };
 }

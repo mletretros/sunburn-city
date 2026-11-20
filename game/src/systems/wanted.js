@@ -1,32 +1,29 @@
+const initial = { level: 0, heat: 0, pulse: 0, x: 0, z: 0, searching: false, policeSight: false, lastCrime: null };
 export function createWanted() {
-  const listeners = new Set();
-  const state = { level: 0, heat: 0, searching: false, policeSight: false, x: 0, z: 0, pulse: 0 };
-  let quiet = 0;
-  function setLevel() {
-    const next = Math.ceil(state.heat / 20);
-    if (next === state.level) return;
-    state.level = next; state.pulse = 1;
-    for (const listener of listeners) listener(next, state);
+  const state = { ...initial }, observers = new Set(); let unseen = 0;
+  function locate(point) { state.x = point.x; state.z = point.z; unseen = 0; }
+  function setHeat(points) {
+    state.heat = Math.max(0, Math.min(100, points));
+    const level = Math.ceil(state.heat / 20); state.searching = level > 0 && !state.policeSight;
+    if (level === state.level) return;
+    state.level = level; state.pulse = 1;
+    for (const observer of observers) observer(level, state);
   }
   return {
     state,
-    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    reset() { state.level = state.heat = state.pulse = quiet = 0; state.searching = state.policeSight = false; },
-    crime(type, amount, position) {
-      state.lastCrime = type; quiet = 0;
-      state.x = position.x; state.z = position.z;
-      state.heat = Math.min(100, state.heat + amount);
-      setLevel();
+    reset() { Object.assign(state, initial); unseen = 0; },
+    crime(reason, points, location) {
+      if (!Number.isFinite(points) || points <= 0) return;
+      locate(location); state.lastCrime = reason; setHeat(state.heat + points);
     },
-    update(dt, sight, position) {
-      state.policeSight = sight; state.searching = state.level > 0 && !sight;
-      state.pulse = Math.max(0, state.pulse - dt * 1.8);
-      if (sight) { quiet = 0; state.x = position.x; state.z = position.z; }
-      else if ((quiet += dt) > 5.5 && state.level) {
-        const away = Math.hypot(position.x - state.x, position.z - state.z) > 65;
-        state.heat = Math.max(0, state.heat - dt * (away ? 4.6 : 1.8)); setLevel();
-      }
-      if (!state.level) state.searching = false;
+    update(dt, visible, location) {
+      state.pulse = Math.max(0, state.pulse - dt * 1.8); state.policeSight = !!visible;
+      if (visible) { locate(location); state.searching = false; return; }
+      unseen += dt; state.searching = state.level > 0;
+      if (!state.searching || unseen <= 5.5) return;
+      const far = (location.x - state.x) ** 2 + (location.z - state.z) ** 2 > 65 * 65;
+      setHeat(state.heat - dt * (far ? 4.6 : 1.8));
     },
+    subscribe(observer) { observers.add(observer); return () => observers.delete(observer); },
   };
 }
